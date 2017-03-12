@@ -1,0 +1,86 @@
+recur vs wildcard
+  both cannot be used at time(hour and minute) level
+  recur allows explicit start and end time
+  recur of one unit is equivalent to wildcard
+  recur can have a period of larger than 1, while wildcard is always equivalent to recur of period of 1
+  if upper level is not specified
+    both recur and wildcard continues without upper bound
+    (e.g. if at month level, then both continues for all months, not just current year)
+  if upper level is specified
+    both recur and wildcard are bounded by the upper level range
+    in particular, the recur cycle resets after 1 unit of upper level(will not overflow into next unit of upper level)
+    Example :
+      if a recur is set to period of 7 months, start at Jan, but year is specified explicitly
+      then the cycle will only hit Jan, then August, and will not hit February of next year
+      demo code :
+      +year _ {
+        +recur every 7 months [ start@ Jan ] {
+          ~ event for Jan and August
+        }
+      }
+
+      +recur every 2 months [ start@ 2017 Jan ] { // the start@ must contain missing all upper levels and current level (any non-digit and non-letter and not comma character as separator)
+        // the upper level specified this way must be static (mainly simplicity and clarity)
+        // the start@ and end@ constructs will not restrict recur cycles to end within 1 unit of upper level
+        // while using an explicit upper level will
+        ~ event
+      }
+
+  objects of level lower than recur must not by dynamic (this is to avoid complex translation construct being ammended into file)
+  (e.g. if recur of month level is used, week {this, next}, day {today, tomorrow} cannot be used)
+  but can be relative(+recur monthly with +day 1st Sunday)
+  translation will not marked however
+
+values bounds (belong to logic for time point generator handling code)
+  both static and dynamic values above bound of upper level unit(e.g. day exceeding days in the month) are ignored
+  this is similar to how recur cycles are handled
+
+interpretation
+  should be free of differing/contradicting interpretations for any parsed object
+
+translation
+  generate ammendments when dynamic values are used (e.g. this, next, today, tomorrow)
+  using the construct [[ ... { resolved@... }]] -> 
+  relative static values are not translated
+
+categories of values :
+  dynamic values         : values that are relative to a changing point of time
+                           (e.g. today is tied to current time, which is changing)
+                           only needs to be resolved once
+                           context dependent
+
+  relative values        : values which are relative to some point of reference in the given context
+                           (e.g. 1st Sunday in a month while fixed given a specific month, it's not the
+                           same day for each month)
+                           needs to be resolved every time used
+                           context dependent
+
+  (fully) static values  : values that are fixed given any context
+                           (e.g. day 1 of any month is still day 1)
+                           context free
+
+defuzzing stages for a single branch:
+  primary defuzz (context free defuzz (collect results only) and generation of ctxt-dep-λs)
+  context generation (make the ctxt-ht)
+  check for duplicate time levels
+  add-info checks (start@, end@ for +recur, +year ... for other code blocks)
+  context sensitive defuzz using the generated ctxt-dep-λs for +day, +week, +month, +year, +from+to, recur (start@ and end@)
+  (store results in analysis-ctxt)
+    error checking :
+      for each parsed
+        - if there are at least one successful interpretation, pick first interpretation
+        - if there are no successful interpretation, pick last unsuccessful interpretation for error reporting
+    ctxt-dep-λs produce an error or a value, they do NOT produce next-time-λs
+  create time point generator :
+    generate next-time-λ (wildcard) for +day, +week, +month, +year, if any
+    generate next-time-λ (ranged) for +from+to
+      error checking :
+        - report error (using analysis-error) when constraint for generating next-time-λ cannot be satisfied
+          namely the from part should be <= the to part
+    generate next-time-λ (recur)  for +recur
+      error checking :
+        - should be completely error-free
+    (store in time-point-gen)
+
+; defuzzing stage for multiple branches combined (done after defuzzing for single branches are done)
+;   check for inconsistent interpretation of parsed structs

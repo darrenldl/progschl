@@ -1,0 +1,13 @@
+#lang racket
+
+(require "analyzer-utils.rkt"
+         "analyzer-components.rkt"
+         "parsed-utils.rkt")
+
+(provide (all-from-out "analyzer-utils.rkt"
+                       "analyzer-components.rkt"
+                       "parsed-utils.rkt")
+
+         file-name)
+
+(define file-name (make-parameter #f))

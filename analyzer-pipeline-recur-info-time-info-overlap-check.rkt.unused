@@ -1,0 +1,70 @@
+#lang racket
+
+(require "analyzer-utils.rkt"
+         "analyzer-components.rkt"
+         "parsed-utils.rkt")
+
+(provide recur-info-time-info-overlap-check)
+
+(define/contract (accumulate-infos-sub-infos lst [res (vector null null)])
+  (->* (list?)
+       ((vector/c (listof (cons/c syntax? syntax?)) (listof (cons/c syntax? syntax?))))
+       (vector/c (listof (cons/c syntax? syntax?)) (listof (cons/c syntax? syntax?))))
+  (match lst
+    [(list)          res]
+    [(list v vs ...) (cond
+                       [(parsed-with-token v
+                                           '+YEAR
+                                           '+MONTH
+                                           '+WEEK
+                                           '+DAY)   (let ([infos (hash-ref (parsed-attrs v) 'info)])
+                                                      (accumulate-infos-sub-infos vs
+                                                                                  (vector (append (vector-ref res 0)
+                                                                                                  infos)
+                                                                                          (append (vector-ref res 1)
+                                                                                                  infos))))]
+                       [(parsed-with-token v
+                                           '+RECUR) (let ([start@-infos (hash-ref (parsed-attrs v) 'start@-info)]
+                                                          [end@-infos   (hash-ref (parsed-attrs v) 'end@-info)])
+                                                      (accumulate-infos-sub-infos vs
+                                                                                  (vector (append (vector-ref res 0)
+                                                                                                  start@-infos)
+                                                                                          (append (vector-ref res 1)
+                                                                                                  end@-infos))))]
+                       [else                        (accumulate-infos-sub-infos vs res)])]))
+
+(define/contract (grouped-info-check ht [keys (hash-keys ht)] [res null])
+    (->* (hash?)
+         (list?)
+         (listof analysis-error?))
+    (match keys
+      [(list)          res]
+      [(list k ks ...) (let* ([lst (hash-ref ht k)]
+                              [len (length lst)])
+                         (cond
+                           [(<= len 1) (grouped-info-check ht ks res)]
+                           [else       (grouped-info-check ht ks (append (infos->analysis-error-time-level-overlapped (car (first lst)) (rest lst))
+                                                                         res))]))]))
+
+(define/contract (recur-info-time-info-overlap-check vect)
+  (-> (vector/c analysis-ctxt? list?)
+      (or/c (vector/c analysis-ctxt? list?) (listof analysis-error?)))
+  (define/contract (recur-info-time-info-overlap-check-helper lst)
+    (-> list?
+        (listof analysis-error?))
+    (let* ([all-info-vect               (accumulate-infos-sub-infos lst)]
+           [start@-and-other-info       (vector-ref all-info-vect 0)]
+           [end@-and-other-info         (vector-ref all-info-vect 1)]
+           [grouped-start@-related-info (group-by-info-time-level start@-and-other-info)]
+           [grouped-end@-related-info   (group-by-info-time-level end@-and-other-info)]
+           [res                         (append (grouped-info-check grouped-start@-related-info)
+                                                (grouped-info-check grouped-end@-related-info))])
+      res))
+  (let* ([ctxt        (vector-ref vect 0)]
+         [parsed-list (vector-ref vect 1)]
+         [res         (recur-info-time-info-overlap-check-helper parsed-list)])
+    (cond
+      [(empty? res) (sync-list->ctxt
+                     (vector ctxt parsed-list))]
+      [else         res])))
+      

@@ -1,0 +1,486 @@
+#lang racket
+
+(provide gen-id
+
+         ; add-*-name
+         add-task-name
+         add-remark-name
+         ; *-id->name
+         item-id->name
+         task-id->name
+         remark-id->name
+         ; show-*-names
+         show-item-names
+         show-task-names
+         show-remark-names
+         
+         ; add-*-tags
+         add-task-tags
+         add-remark-tags
+         ; *-id->tags
+         item-id->tags
+         task-id->tags
+         remark-id->tags
+         ; show-*-tags
+         show-item-tags
+         show-task-tags
+         show-remark-tags
+         
+         ; add-*-places
+         add-task-places
+         add-remark-places
+         ; *-id->places
+         item-id->places
+         task-id->places
+         remark-id->places
+         ; show-*-places
+         show-item-places
+         show-task-places
+         show-remark-places
+
+         add-recur
+         show-recurs
+
+         add-concrete
+         show-concretes
+
+         time-point
+         time-point-year
+         time-point-month
+         time-point-day
+         time-point-hour
+         time-point-minute
+
+         add-final
+         show-finals)
+
+(require "macro-utils.rkt"
+         "misc-utils.rkt"
+         datalog
+         (for-syntax racket/syntax
+                     racket/base
+                     racket/list))
+
+(define item     (make-theory))
+(define recur    (make-theory))
+(define concrete (make-theory))
+(define final    (make-theory))
+
+(define-struct/contract time-point ([year     (or/c exact-nonnegative-integer? #f)]
+                                    [month    (or/c exact-nonnegative-integer? #f)]
+                                    [week-day (or/c exact-nonnegative-integer? #f)]
+                                    [day      (or/c exact-nonnegative-integer? #f)]
+                                    [hour     (or/c exact-nonnegative-integer? #f)]
+                                    [minute   (or/c exact-nonnegative-integer? #f)]) #:transparent)
+
+(define (task-or-remark? x)
+  (and (symbol? x)
+       (or (equal? x 'task)
+           (equal? x 'remark))))
+
+(define-syntax (define-for-item-db stx)
+  (syntax-case stx ()
+    [(define-for-item-db type ...)
+     (with-syntax (;database
+                   [item-db-name              'item]
+                   
+                   ; name table
+                   [id-name-table             'item-id-name]
+                   ; add
+                   [(add-name-func-id    ...) (format-ids "add-~a-name"   #'(type ...))]
+                   ; id->
+                   [item-id->name-func-id     (format-id #'define-for-item-db "item-id->name")]
+                   [(id->name-func-id    ...) (format-ids "~a-id->name"   #'(type ...))]
+                   ; show
+                   [item-show-names-func-id   (format-id #'define-for-item-db "show-item-names")]
+                   [(show-names-func-id  ...) (format-ids "show-~a-names" #'(type ...))]
+
+                   ; tag table
+                   [id-tag-table              'item-id-tag]
+                   ; add
+                   [(add-tags-func-id    ...) (format-ids "add-~a-tags"   #'(type ...))]
+                   ; id->
+                   [item-id->tags-func-id     (format-id #'define-for-item-db "item-id->tags")]
+                   [(id->tags-func-id    ...) (format-ids "~a-id->tags"   #'(type ...))]
+                   ; show
+                   [item-show-tags-func-id    (format-id #'define-for-item-db "show-item-tags")]
+                   [(show-tags-func-id   ...) (format-ids "show-~a-tags"  #'(type ...))]
+
+                   ; place table
+                   [id-place-table            'item-id-place]
+                   ; add
+                   [(add-places-func-id  ...) (format-ids "add-~a-places" #'(type ...))]
+                   ; id->
+                   [item-id->places-func-id   (format-id #'define-for-item-db "item-id->places")]
+                   [(id->places-func-id  ...) (format-ids "~a-id->places"   #'(type ...))]
+                   ; show
+                   [item-show-places-func-id  (format-id #'define-for-item-db "show-item-places")]
+                   [(show-places-func-id ...) (format-ids "show-~a-places"  #'(type ...))]
+
+                   ; parent table
+                   [parent-table              'item-parent]
+                   ; add
+                   )
+       #'(begin
+           ; add-*-name
+           (define/contract (add-name-func-id id name)
+             (-> exact-nonnegative-integer? string?
+                 any/c)
+             (if (not (empty? (datalog item-db-name
+                                       (? (id-name-table Type #,id Name)))))
+                 (raise (error (format "id : ~a already used" id)))
+                 (datalog item-db-name
+                          (! (id-name-table type #,id #,name)))))
+           ...
+
+           ; *-id->name
+           (define/contract (item-id->name-func-id in-type id)
+             (-> task-or-remark? exact-nonnegative-integer?
+                 (or/c #f string?))
+             (let ([names (datalog item-db-name
+                                   (? (id-name-table #,in-type #,id Name)))])
+               (if (empty? names)
+                   #f
+                   (hash-ref (first names) 'Name))))
+           
+           (define/contract (id->name-func-id id)
+             (-> exact-nonnegative-integer?
+                 (or/c #f string?))
+             (item-id->name-func-id (quote type) id))
+           ...
+
+           ; show-*-names
+           (define (item-show-names-func-id)
+             (let ([items (datalog item-db-name
+                                   (? (id-name-table Type Id Name)))])
+               (for ([item items])
+                 (displayln (format "Type : ~a, Id : ~a, Name : ~a"
+                                    (hash-ref item 'Type)
+                                    (hash-ref item 'Id)
+                                    (hash-ref item 'Name))))))
+
+           (define (show-names-func-id)
+             (let ([items (datalog item-db-name
+                                   (? (id-name-table type Id Name)))])
+               (for ([item items])
+                 (displayln (format "Id : ~a, Name : ~a"
+                                    (hash-ref item 'Id)
+                                    (hash-ref item 'Name))))))
+           ...
+
+           ; add-*-tags
+           (define/contract (add-tags-func-id id tags)
+             (-> exact-nonnegative-integer? (listof string?)
+                 any/c)
+             (for ([tag tags])
+               (datalog item-db-name
+                        (! (id-tag-table type #,id #,tag)))))
+           ...
+
+           ; *-id->tags
+           (define/contract (item-id->tags-func-id in-type id)
+             (-> task-or-remark? exact-nonnegative-integer?
+                 (or/c #f string?))
+             (let ([tags (datalog item-db-name
+                                  (? (id-tag-table #,in-type #,id Tag)))])
+               (if (empty? tags)
+                   #f
+                   (hash-ref (first tags) 'Tag))))
+           
+           (define/contract (id->tags-func-id id)
+             (-> exact-nonnegative-integer?
+                 (or/c #f string?))
+             (item-id->tags-func-id (quote type) id))
+           ...
+
+           ; show-*-tags
+           (define (item-show-tags-func-id)
+             (let ([items (datalog item-db-name
+                                   (? (id-tag-table Type Id Tag)))])
+               (for ([item items])
+                 (displayln (format "Type : ~a, Id : ~a, Tag : ~a"
+                                    (hash-ref item 'Type)
+                                    (hash-ref item 'Id)
+                                    (hash-ref item 'Tag))))))
+
+           (define (show-tags-func-id)
+             (let ([items (datalog item-db-name
+                                   (? (id-tag-table task Id Tag)))])
+               (for ([item items])
+                 (displayln (format "Id : ~a, Tag : ~a"
+                                    (hash-ref item 'Id)
+                                    (hash-ref item 'Tag))))))
+           ...
+
+           ; add-*-places
+           (define/contract (add-places-func-id id places)
+             (-> exact-nonnegative-integer? (listof string?)
+                 any/c)
+             (for ([place places])
+               (datalog item-db-name
+                        (! (id-place-table type #,id #,place)))))
+           ...
+
+           ; *-id->places
+           (define/contract (item-id->places-func-id in-type id)
+             (-> task-or-remark? exact-nonnegative-integer?
+                 (or/c #f string?))
+             (let ([places (datalog item-db-name
+                                    (? (id-place-table #,in-type #,id Place)))])
+               (if (empty? places)
+                   #f
+                   (hash-ref (first places) 'Place))))
+           
+           (define/contract (id->places-func-id id)
+             (-> exact-nonnegative-integer?
+                 (or/c #f string?))
+             (item-id->places-func-id (quote type) id))
+           ...
+
+           ; show-*-places
+           (define (item-show-places-func-id)
+             (let ([items (datalog item-db-name
+                                   (? (id-place-table Type Id Place)))])
+               (for ([item items])
+                 (displayln (format "Type : ~a, Id : ~a, Name : ~a"
+                                    (hash-ref item 'Type)
+                                    (hash-ref item 'Id)
+                                    (hash-ref item 'Place))))))
+
+           (define (show-places-func-id)
+             (let ([items (datalog item-db-name
+                                   (? (id-place-table task Id Tag)))])
+               (for ([item items])
+                 (displayln (format "Id : ~a, Tag : ~a"
+                                    (hash-ref item 'Id)
+                                    (hash-ref item 'Tag))))))
+           ...
+           
+           ))]))
+
+(begin-for-syntax
+  (define (time-point-values name)
+    (with-syntax ([year     #`(time-point-year     #,name)]
+                  [month    #`(time-point-month    #,name)]
+                  [week-day #`(time-point-week-day #,name)]
+                  [day      #`(time-point-day      #,name)]
+                  [hour     #`(time-point-hour     #,name)]
+                  [minute   #`(time-point-minute   #,name)])
+      (list #'#,year
+            #'#,month
+            #'#,week-day
+            #'#,day
+            #'#,hour
+            #'#,minute)))
+  
+  (define (time-point-query-pattern prefix)
+    (with-syntax ([year     (format-id #'whatever "~aYear"    prefix)]
+                  [month    (format-id #'whatever "~aMonth"   prefix)]
+                  [week-day (format-id #'whatever "~aWeekDay" prefix)]
+                  [day      (format-id #'whatever "~aDay"     prefix)]
+                  [hour     (format-id #'whatever "~aHour"    prefix)]
+                  [minute   (format-id #'whatever "~aMinute"  prefix)])
+      (list #'year
+            #'month
+            #'week-day
+            #'day
+            #'hour
+            #'minute)))
+  
+  (define (show-recur-format-gen)
+    (define (make-fmt lst)
+      (let-values ([(front last) (split-at lst (sub1 (length lst)))])
+        (string-append (foldl (λ (x y) (string-append y x " : ~a, ")) "" front)
+                       (string-append (first last) " : ~a"))
+        ))
+    (let* ([freqs      (time-point-query-pattern "Freq")]
+           [starts     (time-point-query-pattern "Start")]
+           [duras      (time-point-query-pattern "Dura")]
+           [freq-strs  (map symbol->string (map syntax->datum freqs))]
+           [start-strs (map symbol->string (map syntax->datum starts))]
+           [dura-strs  (map symbol->string (map syntax->datum duras))]
+           [freq-fmt   (make-fmt freq-strs)]
+           [start-fmt  (make-fmt start-strs)]
+           [dura-fmt   (make-fmt dura-strs)]
+           [fmt        (string-append "Id : ~a, ParentId : ~a, " freq-fmt "\n"
+                                      "        "  start-fmt "\n"
+                                      "        "  dura-fmt)])
+      fmt))
+
+  (define (show-concrete-format-gen)
+    (define (make-fmt lst)
+      (let-values ([(front last) (split-at lst (sub1 (length lst)))])
+        (string-append (foldl (λ (x y) (string-append y x " : ~a, ")) "" front)
+                       (string-append (first last) " : ~a"))
+        ))
+    (let* ([starts      (time-point-query-pattern "Start")]
+           [finishes    (time-point-query-pattern "Finish")]
+           [start-strs  (map symbol->string (map syntax->datum starts))]
+           [finish-strs (map symbol->string (map syntax->datum finishes))]
+           [start-fmt   (make-fmt start-strs)]
+           [finish-fmt  (make-fmt finish-strs)]
+           [fmt         (string-append "Id : ~a, ParentId : ~a, Fully Explicit? : ~a, " start-fmt "\n"
+                                       "                              "  finish-fmt)])
+      fmt))
+
+  (define (show-final-format-gen)
+    (show-concrete-format-gen))
+  )
+
+(define-syntax (define-for-recur-db stx)
+  (syntax-case stx ()
+    [(define-for-recur-db)
+     (with-syntax ([recur-db-name                'recur]
+                   [recur-table                  'recur]
+                   [add-func-id                  (format-id #'define-for-recur-db "add-recur")]
+                   [show-func-id                 (format-id #'define-for-recur-db "show-recurs")]
+                   [(time-point-value-freq  ...) (time-point-values 'freq)]
+                   [(time-point-value-start ...) (time-point-values 'start)]
+                   [(time-point-value-dura  ...) (time-point-values 'dura)]
+                   [(freq-query-pattern     ...) (time-point-query-pattern "Freq")]
+                   [(start-query-pattern    ...) (time-point-query-pattern "Start")]
+                   [(dura-query-pattern     ...) (time-point-query-pattern "Dura")]
+                   [fmt                          (show-recur-format-gen)])
+       #'(begin
+           (define/contract (add-func-id id parent-id freq start dura)
+             (-> exact-nonnegative-integer?
+                 (or/c exact-nonnegative-integer? #f)
+                 time-point?
+                 time-point?
+                 time-point?
+                 any/c)
+             (datalog recur-db-name
+                      (! (recur-table #,id
+                                      #,parent-id
+                                      time-point-value-freq
+                                      ...
+
+                                      time-point-value-start
+                                      ...
+
+                                      time-point-value-dura
+                                      ...
+                                      ))))
+
+           (define (show-func-id)
+             (let ([recurs (datalog recur-db-name
+                                    (? (recur-table Id ParentId
+                                                    freq-query-pattern   ...
+                                                    start-query-pattern  ...
+                                                    dura-query-pattern ...)))])
+               (for ([recur recurs])
+                 (displayln (format fmt
+                                    (hash-ref recur 'Id)
+                                    (hash-ref recur 'ParentId)
+                                    (hash-ref recur (quote freq-query-pattern))
+                                    ...
+                                    (hash-ref recur (quote start-query-pattern))
+                                    ...
+                                    (hash-ref recur (quote dura-query-pattern))
+                                    ...
+                                    )))))
+           ))]))
+
+(define-syntax (define-for-concrete-db stx)
+  (syntax-case stx ()
+    [(define-for-concrete-db)
+     (with-syntax ([concrete-db-name              'recur]
+                   [concrete-table                'recur]
+                   [add-func-id                   (format-id #'define-for-concrete-db "add-concrete")]
+                   [show-func-id                  (format-id #'define-for-concrete-db "show-concretes")]
+                   [(time-point-value-start  ...) (time-point-values 'start)]
+                   [(time-point-value-finish ...) (time-point-values 'finish)]
+                   [(start-query-pattern     ...) (time-point-query-pattern "Start")]
+                   [(finish-query-pattern    ...) (time-point-query-pattern "Finish")]
+                   [fmt                           (show-concrete-format-gen)])
+       #'(begin
+           (define/contract (add-func-id id parent-id fully-explicit? start finish)
+             (-> exact-nonnegative-integer?
+                 (or/c exact-nonnegative-integer? #f)
+                 boolean?
+                 time-point?
+                 time-point?
+                 any/c)
+             (datalog concrete-db-name
+                      (! (concrete-table #,id
+                                         #,parent-id
+                                         #,fully-explicit?
+                                         time-point-value-start
+                                         ...
+                                         
+                                         time-point-value-finish
+                                         ...
+                                         ))))
+
+           (define (show-func-id)
+             (let ([recurs (datalog concrete-db-name
+                                    (? (concrete-table Id ParentId FullyExplicit
+                                                       start-query-pattern  ...
+                                                       finish-query-pattern ...)))])
+               (for ([recur recurs])
+                 (displayln (format fmt
+                                    (hash-ref recur 'Id)
+                                    (hash-ref recur 'ParentId)
+                                    (hash-ref recur 'FullyExplicit)
+                                    (hash-ref recur (quote start-query-pattern))
+                                    ...
+                                    (hash-ref recur (quote finish-query-pattern))
+                                    ...
+                                    )))))
+           ))]))
+
+(define-syntax (define-for-final-db stx)
+  (syntax-case stx ()
+    [(define-for-final-db)
+     (with-syntax ([final-db-name                 'final]
+                   [final-table                   'final]
+                   [add-func-id                   (format-id #'define-for-final-db "add-final")]
+                   [show-func-id                  (format-id #'define-for-final-db "show-finals")]
+                   [(time-point-value-start  ...) (time-point-values 'start)]
+                   [(time-point-value-finish ...) (time-point-values 'finish)]
+                   [(start-query-pattern     ...) (time-point-query-pattern "Start")]
+                   [(finish-query-pattern    ...) (time-point-query-pattern "Finish")]
+                   [fmt                           (show-final-format-gen)])
+       #'(begin
+           (define/contract (add-func-id id parent-id fully-explicit? start finish)
+             (-> exact-nonnegative-integer?
+                 (or/c exact-nonnegative-integer? #f)
+                 boolean?
+                 time-point?
+                 time-point?
+                 any/c)
+             (datalog final-db-name
+                      (! (final-table #,id
+                                      #,parent-id
+                                      #,fully-explicit?
+                                      time-point-value-start
+                                      ...
+                                         
+                                      time-point-value-finish
+                                      ...
+                                      ))))
+
+           (define (show-func-id)
+             (let ([recurs (datalog final-db-name
+                                    (? (final-table Id ParentId FullyExplicit start-query-pattern ... finish-query-pattern ...)))])
+               (for ([recur recurs])
+                 (displayln (format fmt
+                                    (hash-ref recur 'Id)
+                                    (hash-ref recur 'ParentId)
+                                    (hash-ref recur 'FullyExplicit)
+                                    (hash-ref recur (quote start-query-pattern))
+                                    ...
+                                    (hash-ref recur (quote finish-query-pattern))
+                                    ...
+                                    )))))
+           ))]))
+
+(define-for-item-db task remark)
+(define-for-recur-db)
+(define-for-concrete-db)
+(define-for-final-db)
+
+(module+ test
+  (add-recur 0 #f (time-point 0 0 0 1 0 0) (time-point 1 2 3 4 5 0) (time-point 1 2 3 4 6 0))
+  (show-recurs)
+  )

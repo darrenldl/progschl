@@ -1,0 +1,33 @@
+#lang racket
+
+(require "analyzer-components.rkt"
+         "analyzer-utils.rkt"
+         "parsed-utils.rkt")
+
+(provide delist-recur-info)
+
+(define/contract (delist-recur-info vect)
+  (-> (vector/c analysis-ctxt? (listof parsed?))
+      (or/c (vector/c analysis-ctxt? (listof parsed?)) (listof analysis-error?)))
+  (define/contract (delist-recur-info-helper info-ht [keys (hash-keys info-ht)])
+    (->* (hash?)
+         (list?)
+         hash?)
+    (match keys
+      [(list)          info-ht]
+      [(list k ks ...) (delist-recur-info-helper (hash-set info-ht
+                                                           k (let ([lst (hash-ref info-ht k)])
+                                                               (delist-single lst)))
+                                                 ks)]))
+  (let* ([ctxt          (vector-ref vect 0)]
+         [parsed-list   (vector-ref vect 1)]
+         [ctxt-hash     (analysis-ctxt->hash ctxt)]
+         [start@-ht     (analysis-ctxt-recur-individual-start@-infos ctxt)]
+         [end@-ht       (analysis-ctxt-recur-individual-end@-infos   ctxt)]
+         [start@-res    (delist-recur-info-helper start@-ht)]
+         [end@-res      (delist-recur-info-helper end@-ht)]
+         [res-ctxt-hash (hash-set* ctxt-hash
+                                   'recur-individual-start@-infos start@-res
+                                   'recur-individual-end@-infos   end@-res)]
+         [res-ctxt      (hash->analysis-ctxt res-ctxt-hash)])
+    (vector res-ctxt parsed-list)))

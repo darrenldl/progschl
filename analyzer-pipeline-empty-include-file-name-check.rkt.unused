@@ -1,0 +1,37 @@
+#lang racket
+
+(require "analyzer-utils.rkt"
+         "analyzer-components.rkt"
+         "parsed-utils.rkt")
+
+(provide empty-include-file-name-check)
+
+(define/contract (empty-include-file-name-check lst)
+  (-> list?
+      (or/c list? (listof analysis-error?)))
+  (define/contract (empty-include-file-name-check-helper lst [res null])
+    (->* (list?)
+         (list?)
+         (listof analysis-error?))
+    (match lst
+      [(list)          (reverse res)]
+      [(list v vs ...) (cond
+                         [(parsed-with-token v 'INCLUDE) (let* ([keyword-syn   (hash-ref (parsed-attrs v) 'keyword)]
+                                                                [file-name-str (first (parsed-strings v))]
+                                                                [file-name-len (string-length file-name-str)])
+                                                           (cond
+                                                             [(= file-name-len 0)
+                                                              (empty-include-file-name-check-helper vs
+                                                                                                    (cons (analysis-error (file-name)
+                                                                                                                          (syntax-line   keyword-syn)
+                                                                                                                          (syntax-column keyword-syn)
+                                                                                                                          "empty file name")
+                                                                                                          res))]
+                                                             [else
+                                                              (empty-include-file-name-check-helper vs
+                                                                                                    res)]))]
+                         [else                           (empty-include-file-name-check-helper vs res)])]))
+  (let ([res         (empty-include-file-name-check-helper lst)])
+    (cond
+      [(empty? res) lst]
+      [else         res])))

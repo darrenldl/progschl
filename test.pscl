@@ -1,0 +1,46 @@
+// this is file for testing established rules described in draft.pscl
+
+// translation in +recur :
+//   use normal translation as other blocks on first run
+//   record resolved@, calculate start@, finish@
+//   invoke retranslation when time is passed finish@
+
++month _ {
+    [[ +day 1st Sunday { resolved@-2017-02-05.14:44, start@-2017-02-12.00:00, finish@-2017-02-13.00:00 }]] -> // defuzzed at month boundry
+    +day 5 {
+        * first sunday
+    }
+
+    +day 1 {    // context-free since numeric
+        * start of month
+    }
+}
+
++day 1 {
+    +month June {
+        ~ holiday homework
+    }
+    +month July {
+        ~ holiday homework
+    }
+}
+
+// above becomes :
+
++year 2017 {
+    +day 1 {
+        +month June {
+            ~ holiday homework
+        }
+        +month July {
+            ~ holiday homework
+        }
+    }
+}
+
++month August {
+    [[ +day 1st Sunday ]] ->    // one-off events are defuzzed once only
+    +day 6 {
+        * whatever
+    }
+}

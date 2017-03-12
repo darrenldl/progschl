@@ -1,0 +1,75 @@
+#lang racket
+
+(require "analyzer-utils.rkt"
+         "analyzer-components.rkt"
+         "parsed-utils.rkt")
+
+(provide patch-analysis-ctxt-using-recur-sub-info)
+
+(define/contract (patch-analysis-ctxt-single ctxt-hash p)
+  (-> analysis-ctxt-hash? parsed?
+      analysis-ctxt-hash?)
+  (define/contract (patch-analysis-ctxt-single-helper ctxt-hash grouped-start@ grouped-end@ [keys (list 'year 'month 'week 'day)])
+    (->* (analysis-ctxt-hash? hash? hash?)
+         (list?)
+         analysis-ctxt-hash?)
+    (match keys
+      [(list)          ctxt-hash]
+      [(list k ks ...) (let* ([start@-res (hash-ref grouped-start@ k null)]
+                              [start@-val (cond
+                                            [(empty? start@-res) #f]
+                                            [else                (cdr (first start@-res))])]
+                              [end@-res   (hash-ref grouped-end@   k null)]
+                              [end@-val   (cond
+                                            [(empty? end@-res)   #f]
+                                            [else                (cdr (first end@-res))])]
+                              [time-level k])
+                         (cond
+                           [(and (empty? start@-res)
+                                 (empty? end@-res))  (patch-analysis-ctxt-single-helper ctxt-hash
+                                                                                        grouped-start@
+                                                                                        grouped-end@
+                                                                                        ks)]
+;                           [(empty? start@-res)      (patch-analysis-ctxt-single-helper (hash-set ctxt-hash
+;                                                                                                  time-level end@-val)
+;                                                                                        grouped-start@
+;                                                                                        grouped-end@
+;                                                                                        ks)]
+;                           [(empty? end@-res)        (patch-analysis-ctxt-single-helper (hash-set ctxt-hash
+;                                                                                                  time-level start@-val)
+;                                                                                        grouped-start@
+;                                                                                        grouped-end@
+;                                                                                        ks)]
+                           [else                     (patch-analysis-ctxt-single-helper (hash-set ctxt-hash
+                                                                                                  time-level (vector 'range start@-val end@-val))
+                                                                                        grouped-start@
+                                                                                        grouped-end@
+                                                                                        ks)])
+                         )]))
+  (let* ([start@-info    (hash-ref (parsed-attrs p) 'start@-info)]
+         [end@-info      (hash-ref (parsed-attrs p) 'end@-info)]
+         [grouped-start@ (group-by-info-time-level start@-info)]
+         [grouped-end@   (group-by-info-time-level end@-info)])
+    (patch-analysis-ctxt-single-helper ctxt-hash grouped-start@ grouped-end@)))
+
+(define/contract (patch-analysis-ctxt-using-recur-sub-info vect)
+  (-> (vector/c analysis-ctxt? list?)
+      (or/c (vector/c analysis-ctxt? list?) (listof analysis-error?)))
+  (define/contract (patch-analysis-ctxt-using-recur-sub-info-helper ctxt-hash lst)
+    (-> analysis-ctxt-hash? list?
+        analysis-ctxt-hash?)
+    (match lst
+      [(list)          ctxt-hash]
+      [(list v vs ...) (cond
+                         [(parsed-with-token v '+RECUR)
+                          (patch-analysis-ctxt-using-recur-sub-info-helper (patch-analysis-ctxt-single ctxt-hash v)
+                                                                           vs)]
+                         [else
+                          (patch-analysis-ctxt-using-recur-sub-info-helper ctxt-hash
+                                                                           vs)])]))
+  (let* ([ctxt        (vector-ref vect 0)]
+         [ctxt-hash   (analysis-ctxt->hash ctxt)]
+         [parsed-list (vector-ref vect 1)]
+         [res         (patch-analysis-ctxt-using-recur-sub-info-helper ctxt-hash parsed-list)]
+         [new-ctxt    (hash->analysis-ctxt res)])
+    (vector new-ctxt parsed-list)))

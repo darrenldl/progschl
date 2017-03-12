@@ -1,0 +1,64 @@
+#lang racket
+
+(require "analyzer-components.rkt"
+         "analyzer-utils.rkt"
+         "parsed-utils.rkt")
+
+(provide add-info-check)
+
+(define/contract (group-by-info-keyword lst)
+  (-> list? hash?)
+  (define/contract (group-by-info-keyword-helper lst [res (hash)])
+    (->* (list?)
+         (hash?)
+         hash?)
+    (match lst
+      [(list)          (reverse-lists-in-hash res)]
+      [(list v vs ...) (let ([keyword (car v)]
+                             [info    (cdr v)])
+                         (group-by-info-keyword-helper vs
+                                                       (hash-set res
+                                                                 keyword (cons info (hash-ref res keyword null)))))]))
+  (group-by-info-keyword-helper lst))
+
+(define/contract (add-info-check vect)
+  (-> (vector/c analysis-ctxt? list?)
+      (or/c (vector/c analysis-ctxt? list?) (listof analysis-error?)))
+  (define/contract (add-info-check-grouped-ht ht recognized-keys)
+    (-> hash? list?
+        (listof analysis-error?))
+    (define/contract (add-info-check-grouped-ht-helper keys [res null])
+      (->* (list?)
+           (list?)
+           (listof analysis-error?))
+      (match keys
+        [(list)          res]
+        [(list key rest-keys ...) (cond
+                                    [(member key recognized-keys)
+                                     (let* ([lst (hash-ref ht)]
+                                            [len (length lst)])
+                                       (cond
+                                         [(= len 1) (add-info-check-grouped-ht-helper res)]
+                                         [else      (add-info-check-grouped-ht-helper (cons (analysis-error file-name
+                                                                                                            (syntax-line   v)
+                                                                                                            (syntax-column v)
+                                                                                                            (format "~a has already appeared in additional info list" (syntax->datum v)))
+                                                                                            res))]))]
+
+                                    [else
+                                     (add-info-check-grouped-ht-helper (cons (analysis-error file-name
+                                                                                             (syntax-line 
+    (let ([keys (hash-keys x)])
+      (add-info-check-grouped-ht-helper x keys)))
+  (define/contract (add-info-check-single x)
+    (-> parsed?
+        (listof analysis-error?))
+    (cond
+      [(parsed-with-token x '+YEAR) (let* ([info    (hash-ref (parsed-attrs x) 'info)]
+                                           [info-ht (group-by-info-keyword info)]
+                                           [keys    (hash-keys info-ht)])
+                                      (add-info-check-grouped-ht info-ht)
+  (define/contract (add-info-check-helper lst)
+    (-> list? (listof analysis-error?))
+    (void))
+  (void))

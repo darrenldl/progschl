@@ -1,0 +1,372 @@
+#lang racket
+
+(require data/monad
+         data/applicative
+         megaparsack megaparsack/text
+         gregor
+         "parser-components.rkt"
+         "string-utils.rkt"
+         "date-time-utils.rkt"
+         "macro-utils.rkt"
+         "parser-components.rkt"
+
+         "defuzz-error-struct-def.rkt"
+         "defuzz-utils.rkt")
+
+(provide (all-from-out "defuzz-error-struct-def.rkt"
+                       "defuzz-utils.rkt")
+         string->year
+         string->month
+         string->day
+         define-for-defuzz-time-level)
+
+(define list-of-months (list "january"
+                             "february"
+                             "march"
+                             "april"
+                             "may"
+                             "june"
+                             "july"
+                             "august"
+                             "september"
+                             "october"
+                             "november"
+                             "december"))
+
+(define list-of-week-days (list "monday"
+                                "tuesday"
+                                "wednesday"
+                                "thursday"
+                                "friday"
+                                "saturday"
+                                "sunday"))
+
+(define-syntax (contains-token? stx)
+  (syntax-case stx ()
+    [(_ tok) #'(λ (x)
+                 (and (parsed? x)
+                      (equal? (parsed-token x tok))))]))
+
+(define-syntax (fuzz-failure? stx)
+  (syntax-case stx ()
+    [_ #'(λ (x)
+           (and (symbol? x)
+                (or (equal? x 'no-match)
+                    (equal? x 'too-fuzzy))))]))
+
+(define/contract (string->day str this-ymd)
+  (-> string?
+      hash?
+      (or/c (list/c 'day      (integer-in 1 31))
+            (list/c 'week-day (in-range-closed 0 6))
+            fuzz-failure?))
+  (let ([low-str (string-downcase str)])
+    (let* ([week-days list-of-week-days]
+           [res       (regexp-match-list low-str week-days)]
+           [num       (length res)])
+      (cond
+        [(= num 0) (let ([today (hash-ref this-ymd 'day (current-day))])
+                     (match low-str
+                       ["today"    (list 'day today)]
+                       ["tomorrow" (list 'day (add1 today))]
+                       ["tmr"      (list 'day (add1 today))]
+                       [_          (let ([day-num (string->number low-str)])
+                                     (cond
+                                       [(exact-positive-integer? day-num) (list 'day day-num)]
+                                       [else                              'no-match]))]))]
+        [(= num 1) (list 'week-day (first res))]
+        [(> num 1) 'too-fuzzy]))))
+
+(define/contract (string->month str this-ymd)
+  (-> string?
+      hash?
+      (or/c (integer-in 1 13)
+            fuzz-failure?))
+  ; 13 is returned when "next" month extends into next year
+  (let* ([months list-of-months]
+         [res    (regexp-match-list (string-downcase str) months)]
+         [num    (length res)])
+    (cond
+      [(= num 0) (let ([this-month (hash-ref this-ymd 'month (current-month))])
+                   (match (string-downcase str)
+                     ["this" this-month]
+                     ["next" (add1 this-month)]
+                     [_      'no-match]))]
+      [(= num 1) (first res)]
+      [(> num 1) 'too-fuzzy])))
+
+(define/contract (string->year str this-ymd)
+  (-> string?
+      hash?
+      (or/c integer? fuzz-failure?))
+  (let ([res (string->number str)])
+    (cond
+      [res  res]
+      [else 'no-match])))
+
+(define Y-M-D/p
+  (do [Y <- integer/p]
+      blank-space/p
+      (char/p #\-)
+      blank-space/p
+      [M <- (guard/p integer/p (in-range-closed 1 12))]
+      blank-space/p
+      (char/p #\-)
+      blank-space/p
+      [D <- (guard/p integer/p (in-range-closed 1 31))]
+      (pure (vector Y M D))))
+
+(define H:M-am/pm/p
+  (do [H <- (guard/p integer/p (in-range-closed 0 23))]
+      blank-space/p
+      (char/p #\:)
+      blank-space/p
+      [M <- (guard/p integer/p (in-range-closed 0 59))]
+      [am/pm <- (or/p (try/p (do (string-ci/p "am")
+                                 (pure 'am)))
+                      (try/p (do (string-ci/p "pm")
+                                 (pure 'pm)))
+                      (pure 'not-specified))]
+      (pure (vector am/pm H M))))
+
+(define/contract (check-if-time-valid? time)
+  (-> (vector/c symbol?
+                exact-nonnegative-integer?
+                exact-nonnegative-integer?)
+      (or/c (vector/c exact-nonnegative-integer?
+                      exact-nonnegative-integer?)
+            #f))
+  (let ([am/pm  (vector-ref time 0)]
+        [hour   (vector-ref time 1)]
+        [minute (vector-ref time 2)])
+    (match am/pm
+      ['not-specified (vector hour minute)]
+      [_              (cond
+                        [(<= hour 12) (match am/pm
+                                        ['am (vector hour minute)]
+                                        ['pm (vector (+ hour 12) minute)])]
+                        [else         #f])])))
+
+(define/contract (check-if-date-valid? date)
+  (-> (vector/c exact-nonnegative-integer?
+                exact-nonnegative-integer?
+                exact-nonnegative-integer?)
+      (or/c (vector/c exact-nonnegative-integer?
+                      exact-nonnegative-integer?
+                      exact-nonnegative-integer?)
+            #f))
+  (let ([year  (vector-ref date 0)]
+        [month (vector-ref date 1)]
+        [day   (vector-ref date 2)])
+    (cond
+      [(> day (days-in-month year month)) #f]
+      [else                               (vector year month day)])))
+
+(define/contract (string->date str)
+  (-> string?
+      (or/c (vector/c integer? (integer-in 1 12) (integer-in 1 31))
+            #f))
+  (let ([procd-str (regexp-replace #px"[^ \\d]" str "-")])
+    (check-if-date-valid?
+     (with-handlers ([exn:fail:read:megaparsack? (λ (x) #f)])
+       (parse-result!
+        (parse-string Y-M-D/p procd-str))))))
+
+(define/contract (string->time str)
+  (-> string?
+      (or/c (vector/c (integer-in 0 23) (integer-in 0 59))
+            #f))
+  (let ([procd-str (regexp-replace #px"[^ \\d]" str ":")])
+    (check-if-time-valid?
+     (with-handlers ([exn:fail:read:megaparsack? (λ (x) #f)])
+       (parse-result!
+        (parse-string H:M-am/pm/p procd-str))))))
+
+(define/contract (defuzz-+from+to in)
+  (-> (contains-token? '+FROM+TO)
+      parsed?)
+  (let* ([strings (parsed-strings in)]
+         [unit (list-ref strings 0)]
+         [from (string-downcase (list-ref strings 1))]
+         [to   (string-downcase (list-ref strings 2))])
+    (match unit
+      ["year"  (let ([from-res (string->year from)]
+                     [to-res   (string->year to)])
+                 (parsed (parsed-token    in)
+                         (parsed-syntaxes in)
+                         (parsed-strings  in)
+                         (hash-set        (parsed-attrs in)
+                                          from from-res
+                                          to   to-res)
+                         (parsed-content  in)))]
+      ["month" (let ([from-res (string->month from)]
+                     [to-res   (string->month to)])
+                 (parsed (parsed-token    in)
+                         (parsed-syntaxes in)
+                         (parsed-strings  in)
+                         (hash-set        (parsed-attrs   in)
+                                          from from-res
+                                          to   to-res)
+                         (parsed-content  in)))]
+      ["day"   (let ([from-res (string->day from)]
+                     [to-res   (string->day to)])
+                 (parsed (parsed-token    in)
+                         (parsed-syntaxes in)
+                         (parsed-strings  in)
+                         (hash-set        (parsed-attrs in)
+                                          from from-res
+                                          to   to-res)
+                         (parsed-content  in)))]
+      ["date"  (let ([from-res (string->date from)]
+                     [to-res   (string->date to)])
+                 (parsed (parsed-token    in)
+                         (parsed-syntaxes in)
+                         (parsed-strings  in)
+                         (hash-set        (parsed-attrs in)
+                                          from from-res
+                                          to   to-res)
+                         (parsed-content  in)))]
+      ["time"  (let ([from-res  (string->time from)]
+                     [to-res    (string->time to)])
+                 (parsed (parsed-token    in)
+                         (parsed-syntaxes in)
+                         (parsed-strings  in)
+                         (hash-set        (parsed-attrs in)
+                                          from from-res
+                                          to   to-res)
+                         (parsed-content  in)))])))
+
+(define-syntax (define-for-defuzz-time-level stx)
+  (syntax-case stx ()
+    [(define-for-defuzz-time-level sym ...)
+     (with-syntax ([(func-id         ...) (format-ids "defuzz-~a-level" #'(sym ...))]
+                   [(->func-id       ...) (format-ids "string->~a"      #'(sym ...))]
+                   [(current-func-id ...) (format-ids "current-~a"      #'(sym ...))]
+                   [(default-token   ...) (strings->symbols
+                                           (formats "+~a" (strings-upcase
+                                                           (symbols->strings #'(sym ...)))))]
+                   )
+       #'(begin
+           (define/contract (func-id tlh this-ymd [fname #f])
+             (->* ((or/c hash? defuzz-error?)
+                   hash?)
+                  ((or/c string? #f))
+                  (values (or/c hash? defuzz-error?)
+                          hash?
+                          (or/c string? #f)))
+             (define no-match-fmt  "cannot match \"~a\" to any ~a integer")
+             (define too-fuzzy-fmt "\"~a\" has too many matches to ~a integer")
+             (if (defuzz-error? tlh)
+                 (values tlh this-ymd fname)
+                 (let ([p (hash-ref tlh (quote sym) #f)])
+                   (if p
+                       (let ([token (parsed-token p)])
+                         (cond
+                           [(symbol=? token (quote default-token)) (let* ([str (first (parsed-strings  p))]
+                                                                          [stx (first (parsed-syntaxes p))])
+                                                                     (match (->func-id str this-ymd)
+                                                                       ['no-match  (values (defuzz-error
+                                                                                             fname
+                                                                                             (syntax-line   stx)
+                                                                                             (syntax-column stx)
+                                                                                             (format no-match-fmt str (quote sym)))
+                                                                                           this-ymd
+                                                                                           fname)]
+                                                                       ['too-fuzzy (values (defuzz-error
+                                                                                             fname
+                                                                                             (syntax-line   stx)
+                                                                                             (syntax-column stx)
+                                                                                             (format too-fuzzy-fmt str (quote sym)))
+                                                                                           this-ymd
+                                                                                           fname)]
+                                                                       [x          (values (hash-set tlh
+                                                                                                     (quote sym)
+                                                                                                     (parsed (parsed-token    p)
+                                                                                                             (parsed-id       p)
+                                                                                                             (parsed-syntaxes p)
+                                                                                                             (parsed-strings  p)
+                                                                                                             (hash-set        (parsed-attrs p)
+                                                                                                                              (quote sym) x)
+                                                                                                             (parsed-content  p)))
+                                                                                           this-ymd
+                                                                                           fname)]))]
+                           [(symbol=? token '+FROM+TO)             (let* ([from-str (list-ref (parsed-strings  p) 1)]
+                                                                          [from-stx (list-ref (parsed-syntaxes p) 1)]
+                                                                          [from-res (->func-id from-str this-ymd)]
+                                                                          [from-sym (string->symbol (format "from-~a" (quote sym)))]
+                                                                          [to-str   (list-ref (parsed-strings  p) 2)]
+                                                                          [to-stx   (list-ref (parsed-syntaxes p) 2)]
+                                                                          [to-res   (->func-id to-str   this-ymd)]
+                                                                          [to-sym   (string->symbol (format "to-~a" (quote sym)))])
+                                                                     (cond
+                                                                       [(equal-symbol? from-res 'too-fuzzy) (values (defuzz-error
+                                                                                                                      fname
+                                                                                                                      (syntax-line   from-stx)
+                                                                                                                      (syntax-column from-stx)
+                                                                                                                      (format too-fuzzy-fmt
+                                                                                                                              from-str
+                                                                                                                              (quote sym)))
+                                                                                                                    this-ymd
+                                                                                                                    fname)]
+                                                                       [(equal-symbol? from-res 'no-match)  (values (defuzz-error
+                                                                                                                      fname
+                                                                                                                      (syntax-line   from-stx)
+                                                                                                                      (syntax-column from-stx)
+                                                                                                                      (format no-match-fmt
+                                                                                                                              from-str
+                                                                                                                              (quote sym)))
+                                                                                                                    this-ymd
+                                                                                                                    fname)]
+                                                                       [(equal-symbol? to-res   'no-match)  (values (defuzz-error
+                                                                                                                      fname
+                                                                                                                      (syntax-line   to-stx)
+                                                                                                                      (syntax-column to-stx)
+                                                                                                                      (format no-match-fmt
+                                                                                                                              to-str
+                                                                                                                              (quote sym)))
+                                                                                                                    this-ymd
+                                                                                                                    fname)]
+                                                                       [(equal-symbol? to-res   'too-fuzzy) (values (defuzz-error
+                                                                                                                      fname
+                                                                                                                      (syntax-line   to-stx)
+                                                                                                                      (syntax-column to-stx)
+                                                                                                                      (format too-fuzzy-fmt
+                                                                                                                              to-str
+                                                                                                                              (quote sym)))
+                                                                                                                    this-ymd
+                                                                                                                    fname)]
+                                                                       [else                                  (values (hash-set tlh
+                                                                                                                                (quote sym)
+                                                                                                                                (parsed (parsed-token    p)
+                                                                                                                                        (parsed-id       p)
+                                                                                                                                        (parsed-syntaxes p)
+                                                                                                                                        (parsed-strings  p)
+                                                                                                                                        (hash-set*       (parsed-attrs p)
+                                                                                                                                                         from-sym from-res
+                                                                                                                                                         to-sym   to-res)
+                                                                                                                                        (parsed-content  p)))
+                                                                                                                      this-ymd
+                                                                                                                      fname)]))]
+                           [(symbol=? token '+RECUR)               (values tlh
+                                                                           this-ymd
+                                                                           fname)]
+                           ))
+                       (values (hash-set tlh
+                                         (quote sym)
+                                         (parsed-auto-id (quote default-token)
+                                                         null
+                                                         null
+                                                         (hash (quote sym) (hash-ref this-ymd (quote sym) (current-func-id)))
+                                                         ;(hash (quote sym) 10)
+                                                         null))
+                               this-ymd
+                               fname)))))
+           ...))]))
+
+(module+ test
+  (string->time "9:00am")
+  (string->time "13:00pm")
+  (string->time "21:00")
+
+  (string->date "2017-02-30")
+  )

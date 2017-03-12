@@ -1,0 +1,5 @@
+*.rkt~
+*.swp
+compiled/
+pscl
+pscl.exe

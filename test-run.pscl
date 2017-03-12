@@ -1,0 +1,11 @@
++time 23:59 [+year 2018, +month June] {
+    ~ task 1
+}
+
++recur monthly [start@ +m July +t 13:39] {
+    +recur daily [start@ +y 2018, end@ +y 2018] {
+        ~ task 2 {
+            ~ sub task A
+        }
+    }
+}

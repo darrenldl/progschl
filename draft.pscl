@@ -1,0 +1,173 @@
+// each file in include has a separate namespace
+// spaces in filename have to be escaped for clarity
+include bus-schedule
+tab-space=4
+// everything is case insensitive when parsing
+
+# comments can also start with '#'
+
+// keywords, explicit dates, explicit days, are all reformatted after
+// parsing
+
+// task time model:
+//   a task is either associated to a period of time
+//   or associated to a single time unit (e.g. Day, Hour, Minute)
+//   tasks associated to time unit with no explicit start end time
+//   will be supplied with start end time automatically
+//   using the lower and upper limit of the next level time unit, if any
+//   the above automatic time are used for collision detection only(if user
+//   chooses to include implicit ones in collision detection), however
+//   the automatically supplied time are not displayed in output
+
+// rules :
+//   each branch path may only contain one +recur
+//   all time units within +recur must be of lower level
+//
+//   for brach path that has no +recur
+//   all missing higher level time units are defaulted to "this" (e.g. this year, this month)
+//   each branch path must contain at least one task/remark block
+//
+//   +date provides all levels of time units in one block
+//   thus each branch path may only contain one +date block
+//   and no other blocks if +date block is present
+//
+//   translation occurs at lowest level
+//   (not necessarily related to the order blocks appear)
+//
+//   translation list :
+//     +recur    -> context-free      translation
+//     +from     -> context-free      translation
+//     concretes -> context-sensitive translation
+//
+//   rules for +recur :
+//     only one +recur in any branch path
+//     must be top level
+//
+//   interpretation for +from-day :
+//     {Mon, Tue, ...}  : only usable within +recur weekly or +week
+//     numeric          : context-free defuzz
+//
+//   interpretation for +day :
+//     today, tomorrow  : require +month, +year to all be "this" if present
+//                        not usable within +from or +recur
+//     {Mon, Tue, ...}  : only usable within +recur weekly or +week
+//                        no defuzz
+//     {1st, 2nd, ..}
+//     +
+//     {Mon, Tue, ...}  : require +month, +year to all be in outer level if present
+//                        require +month to be explicitly present
+//                        only usable within +month, +recur monthly
+//                        defuzzed at month boundary if used within +recur monthly
+//                        defuzzed to concrete +day if used in +month
+//     numeric          : no defuzz, interpreted as day of month
+//
+//   interpretation for +week :
+//     this, next       : require +month, +year to all be "this" if present
+//
+//   interpretation for +from-month :
+//     {Jan, Feb, ...}  : context-free defuzz
+//
+//   interpretation for +month :
+//     this, next       : require year to be "this" if present
+//     {Jan, Feb, ...}  : context-free defuzz
+//
+//   interpretation for +from-year :
+//     numeric          : context-free defuzz
+//
+//   interpretation for +year :
+//     this, next       : context-free defuzz
+//     numeric          : context-free defuzz
+//
+//   interpretation for +date :
+//     numeric          : context-free, fuzz-free
+//
+//   interpretation for +from-date :
+//     numeric          : context-free, fuzz-free
+
++recur weekly {  // keywords start with +
+    +day Monday {
+        +dura 8:00 am - 9:00 am {
+            ~ COMP XXXX Lecture {
+                // allowed attributes : tags, dep, finished?, desc
+                +tags { COMP lecture }  // comma separated, preceeding and trailing spaces are removed
+
+                @place { COMP Building }    // comma separated
+
+                !dep {}
+
+                ?desc {
+                    System engineering
+                }
+
+                ~ Write notes // this creates a sub-task
+
+                <<history {
+                    done-2017-01-23.17:20,
+                    done-2017-01-30.17:21
+                }
+            }
+        }
+
+        +dura 9:00am - 11:00am {
+            ~ COMP XXXX Lecture {
+                +desc {
+
+                }
+            }
+        }
+    }
+}
+
++recur monthly {
+    +day 1st {
+    }
+
+    +day 1st Sunday {   // recurring events are resolved again when loaded
+    }
+}
+
++year 2018 {
+    +from-month June +to July {
+        * Holiday
+    }
+}
+
+~ schedule meeting with Bob
+
+~ shopping {
+    +month this {
+        +day 1st Sunday {   // one-off events are only resolved once
+            +dura 4:00pm - 5:00pm
+        }
+
+        +from-day 1st Sunday +to 3rd Sunday {
+            +from 4:00pm +to 5:00pm // same as +dura 4:00pm - 5:00pm in day context
+        }
+    }
+
+    +day Coming Sunday {
+    }
+}
+
++day Monday {
+    ~ Return stuff
+
+    ~x Go to bank {
+        ?desc { Put in cheque }
+    }
+}
+
+[[ +day tuesday ]] ->
++date YYYY-MM-DD {    # indicates resolution(resolved date can be modified)
+    ~ Buy beer
+}
+
++day today {
+    * holiday {
+    }
+    ~ phone someone
+    ~x get diary {
+        ~x get milk 
+        ~x get cheese 
+    }
+}

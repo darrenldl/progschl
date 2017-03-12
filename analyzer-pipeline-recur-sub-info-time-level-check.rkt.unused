@@ -1,0 +1,91 @@
+#lang racket
+
+(require "analyzer-components.rkt"
+         "analyzer-utils.rkt"
+         "parsed-utils.rkt"
+         "macro-utils.rkt"
+         "misc-utils.rkt")
+
+(provide recur-sub-info-time-level-check)
+
+(define/contract (sub-info-time-level-check ctxt-hash parsed-tl lst [res null])
+  (->* (analysis-ctxt-hash? time-level? (listof (cons/c syntax? syntax?)))
+       ((listof analysis-error?))
+       (listof analysis-error?))
+  (match lst
+    [(list)          (reverse res)]
+    [(list v vs ...) (let* ([sub-info-tl (sub-info-time-level v)]
+                            [keyword-syn (car v)]
+                            [keyword-str (syntax->datum keyword-syn)])
+                       (cond
+                         [(time-level>? sub-info-tl parsed-tl)
+                          (let* ([key (string->symbol (format "~a-parsed" sub-info-tl))]
+                                 [parsed-res (match (hash-ref ctxt-hash key)
+                                               [(list)   #f]
+                                               [(list v) v])])
+                            (cond
+                              [parsed-res (sub-info-time-level-check ctxt-hash
+                                                                     parsed-tl
+                                                                     vs
+                                                                     (cons (let* ([parsed-keyword-syn (hash-ref (parsed-attrs parsed-res) 'keyword)]
+                                                                                  [parsed-keyword-str (syntax->datum parsed-keyword-syn)])
+                                                                             (analysis-error (file-name)
+                                                                                             (syntax-line   keyword-syn)
+                                                                                             (syntax-column keyword-syn)
+                                                                                             (format "sub-info ~a overlaps with time level of ~a at ~a:~a"
+                                                                                                     keyword-str
+                                                                                                     parsed-keyword-str
+                                                                                                     (syntax-line   parsed-keyword-syn)
+                                                                                                     (syntax-column parsed-keyword-syn))))
+                                                                           res))]
+                              [else       (sub-info-time-level-check ctxt-hash
+                                                                     parsed-tl
+                                                                     vs
+                                                                     res)]))]
+                         [(time-level=? sub-info-tl parsed-tl)
+                          (sub-info-time-level-check ctxt-hash
+                                                     parsed-tl
+                                                     vs
+                                                     res)]
+                         [else
+                          (sub-info-time-level-check ctxt-hash
+                                                     parsed-tl
+                                                     vs
+                                                     (cons (analysis-error (file-name)
+                                                                           (syntax-line   keyword-syn)
+                                                                           (syntax-column keyword-syn)
+                                                                           "sub-info must be of higher time-level than or equal to the code block")
+                                                           res))]))]))
+
+(define/contract (recur-sub-info-time-level-check vect)
+  (-> (vector/c analysis-ctxt? list?)
+      (or/c (vector/c analysis-ctxt? list?) (listof analysis-error?)))
+  (define/contract (recur-sub-info-time-level-check-single ctxt-hash p)
+    (-> analysis-ctxt-hash? parsed?
+        (listof analysis-error?))
+    (cond
+      [(parsed-with-token p '+RECUR) (let* ([time-level      (parsed-time-level p)]
+                                            [start@-info     (hash-ref (parsed-attrs p) 'start@-info null)]
+                                            [end@-info       (hash-ref (parsed-attrs p) 'end@-info   null)]
+                                            [res-start@-info (sub-info-time-level-check ctxt-hash time-level start@-info)]
+                                            [res-end@-info   (sub-info-time-level-check ctxt-hash time-level end@-info)])
+                                       (append res-start@-info
+                                               res-end@-info))]
+      [else                          null]))
+  (define/contract (recur-sub-info-time-level-check-helper ctxt-hash lst [res null])
+    (->* (analysis-ctxt-hash? list?)
+         ((listof analysis-error?))
+         (listof analysis-error?))
+    (match lst
+      [(list)          res]
+      [(list v vs ...) (recur-sub-info-time-level-check-helper ctxt-hash
+                                                               vs
+                                                               (append res
+                                                                       (recur-sub-info-time-level-check-single ctxt-hash v)))]))
+  (let* ([ctxt        (vector-ref vect 0)]
+         [ctxt-hash   (analysis-ctxt->hash ctxt)]
+         [parsed-list (vector-ref vect 1)]
+         [res         (recur-sub-info-time-level-check-helper ctxt-hash parsed-list)])
+    (cond
+      [(empty? res) vect]
+      [else         res])))

@@ -1,0 +1,10 @@
+# Install libraries
+raco pkg install functional-lib
+raco pkg install megaparsack
+raco pkg install gregor-lib
+
+# Compile to bytecode
+raco make pscl.rkt
+
+# Execute
+racket pscl.rkt

@@ -1,0 +1,260 @@
+#lang racket
+
+(require "string-utils.rkt"
+         "fuzz-remover-components.rkt"
+         (only-in "parser-components.rkt"
+                  parsed
+                  parsed-auto-id
+                  parsed?
+                  parsed-id
+                  parsed-token
+                  parsed-syntaxes
+                  parsed-strings
+                  parsed-content
+                  parsed-attrs)
+         racket/set
+         racket/syntax
+
+         "defuzz-error-struct-def.rkt"
+         "defuzz-utils.rkt"
+         "macro-utils.rkt"
+         "date-time-utils.rkt")
+
+(provide (all-from-out "defuzz-error-struct-def.rkt"
+                       "defuzz-utils.rkt")
+         defuzz-branch-lists)
+
+(define/contract (+day+month+year-duplicate-exists? lst [st (set)])
+  (->* (list?)
+       (set?)
+       (or/c parsed?
+             #f))
+  (match lst
+    [(list)          #f]
+    [(list v vs ...) (cond
+                       [(parsed? v) (let ([token (parsed-token v)])
+                                      (cond
+                                        [(equal-symbol? token
+                                                        '+day
+                                                        '+month
+                                                        '+year) (if (set-member? st token)
+                                                                    v
+                                                                    (+day+month+year-duplicate-exists?
+                                                                     vs
+                                                                     (set-add st token)))]
+                                        [else           (+day+month+year-duplicate-exists? vs st)]))]
+                       [else        (+day+month+year-duplicate-exists? vs st)])]))
+
+(define/contract (parsed-time-level p)
+  (-> parsed? symbol?)
+  (let ([token (parsed-token p)])
+    (match token
+      ['+YEAR    'year]
+      ['+MONTH   'month]
+      ['+DAY     'day]
+      ['+DATE    'date]
+      ['+TIME    'time]
+      ['+DURA    'time]
+      ['+FROM+TO (let ([unit (list-ref (parsed-strings p) 0)])
+                   (match unit
+                     ["year"  'year]
+                     ["month" 'month]
+                     ["day"   'day]
+                     ["date"  'date]
+                     ["time"  'time]))]
+      [_         'no-time-level])))
+
+(define-syntax (define-for-defuzz-time-level stx)
+  (syntax-case stx ()
+    [(define-for-defuzz-time-level sym ...)
+     (with-syntax ([(func-id         ...) (format-ids "defuzz-~a-level" #'(sym ...))]
+                   [(->func-id       ...) (format-ids "string->~a"      #'(sym ...))]
+                   [(current-func-id ...) (format-ids "current-~a"      #'(sym ...))]
+                   [(default-token   ...) (strings->symbols
+                                           (formats "+~a" (strings-upcase
+                                                           (symbols->strings #'(sym ...)))))]
+                   )
+       #'(begin
+           (define/contract (func-id collected [fname #f])
+             (->* (hash?)
+                  ((or/c string? #f))
+                  (or/c hash? defuzz-error?))
+             (define no-match-fmt  "cannot match \"~a\" to any ~a integer")
+             (define too-fuzzy-fmt "\"~a\" has too many matches to ~a integer")
+             (let ([p (hash-ref collected (quote sym) #f)])
+               (if p
+                   (let ([token (parsed-token p)])
+                     (cond
+                       [(symbol=? token (quote default-token)) (let* ([str (first (parsed-strings  p))]
+                                                                      [stx (first (parsed-syntaxes p))])
+                                                                 (match (->func-id str)
+                                                                   ['no-match  (defuzz-error
+                                                                                 fname
+                                                                                 (syntax-line   stx)
+                                                                                 (syntax-column stx)
+                                                                                 (format no-match-fmt str (quote sym)))]
+                                                                   ['too-fuzzy (defuzz-error
+                                                                                 fname
+                                                                                 (syntax-line   stx)
+                                                                                 (syntax-column stx)
+                                                                                 (format too-fuzzy-fmt str (quote sym)))]
+                                                                   [x          (hash-set collected
+                                                                                         (quote sym)
+                                                                                         (parsed (parsed-token    p)
+                                                                                                 (parsed-id       p)
+                                                                                                 (parsed-syntaxes p)
+                                                                                                 (parsed-strings  p)
+                                                                                                 (hash-set        (parsed-attrs p)
+                                                                                                                  (quote sym) x)
+                                                                                                 (parsed-content  p)))]))]
+                       [(symbol=? token '+FROM+TO) (let* ([from-str (list-ref (parsed-strings  p) 1)]
+                                                          [from-stx (list-ref (parsed-syntaxes p) 1)]
+                                                          [from-res (->func-id from-str)]
+                                                          [from-sym (string->symbol (format "from-~a" (quote sym)))]
+                                                          [to-str   (list-ref (parsed-strings  p) 2)]
+                                                          [to-stx   (list-ref (parsed-syntaxes p) 2)]
+                                                          [to-res   (->func-id to-str)]
+                                                          [to-sym   (string->symbol (format "to-~a" (quote sym)))])
+                                                     (cond
+                                                       [(equal-symbol? from-res 'too-fuzzy) (defuzz-error
+                                                                                                fname
+                                                                                                (syntax-line   from-stx)
+                                                                                                (syntax-column from-stx)
+                                                                                                (format too-fuzzy-fmt
+                                                                                                        from-str
+                                                                                                        (quote sym)))]
+                                                       [(equal-symbol? from-res 'no-match)  (defuzz-error
+                                                                                                fname
+                                                                                                (syntax-line   from-stx)
+                                                                                                (syntax-column from-stx)
+                                                                                                (format no-match-fmt
+                                                                                                        from-str
+                                                                                                        (quote sym)))]
+                                                       
+                                                       [(equal-symbol? to-res   'no-match)  (defuzz-error
+                                                                                                fname
+                                                                                                (syntax-line   to-stx)
+                                                                                                (syntax-column to-stx)
+                                                                                                (format no-match-fmt
+                                                                                                        to-str
+                                                                                                        (quote sym)))]
+                                                       [(equal-symbol? to-res   'too-fuzzy) (defuzz-error
+                                                                                                fname
+                                                                                                (syntax-line   to-stx)
+                                                                                                (syntax-column to-stx)
+                                                                                                (format too-fuzzy-fmt
+                                                                                                        to-str
+                                                                                                        (quote sym)))]
+                                                       [else                                  (hash-set collected
+                                                                                                        (quote sym)
+                                                                                                        (parsed (parsed-token    p)
+                                                                                                                (parsed-id       p)
+                                                                                                                (parsed-syntaxes p)
+                                                                                                                (parsed-strings  p)
+                                                                                                                (hash-set*       (parsed-attrs p)
+                                                                                                                                 from-sym from-res
+                                                                                                                                 to-sym   to-res)
+                                                                                                                (parsed-content  p)))]))]
+                       ))
+                   (hash-set collected
+                             (quote sym)
+                             (parsed-auto-id (quote default-token)
+                                             null
+                                             null
+                                             (hash (quote sym) (current-func-id))
+                                             null)))))
+           ...))]))
+
+(define/contract (defuzz-branch-list lst-all #:file-name [fname #f])
+  (->* (list?)
+       (#:file-name (or/c string? #f))
+       (or/c list?
+             defuzz-error?))
+  (define/contract (list->time-level-hash lst [collected (hash)])
+    (->* (list?)
+         (hash?)
+         (or/c hash?
+               defuzz-error?))
+    (match lst
+      [(list)          collected]
+      [(list v vs ...) (cond
+                         [(parsed? v) (if (hash-has-key? collected (parsed-time-level v))
+                                          (let* ([keyword     (hash-ref (parsed-attrs v) 'keyword)]
+                                                 [keyword-str (syntax->datum keyword)])
+                                            (defuzz-error
+                                              fname
+                                              (syntax-line   keyword)
+                                              (syntax-column keyword)
+                                              (format "code block of same time level already exists : ~a"
+                                                      keyword-str)))
+                                          (list->time-level-hash vs (hash-set collected
+                                                                              (parsed-time-level v) v)))]
+                         [else        (list->time-level-hash vs collected)])]))
+  (define/contract (defuzz-collection collected)
+    (-> hash? (or/c hash? defuzz-error?))
+    
+    (define-for-defuzz-time-level year month day)
+    
+    (let ([collected-year-defuzzed (defuzz-year-level collected)])
+      (if (defuzz-error? collected-year-defuzzed)
+          collected-year-defuzzed
+          (let ([collected-month-defuzzed (defuzz-month-level collected-year-defuzzed)])
+            (if (defuzz-error? collected-month-defuzzed)
+                collected-month-defuzzed
+                (let ([collected-day-defuzzed (defuzz-day-level collected-month-defuzzed)])
+                  (if (defuzz-error? collected-day-defuzzed)
+                      collected-day-defuzzed
+                      collected-day-defuzzed)))))))
+  (define/contract (defuzz-parsed collected p)
+    (-> hash? parsed?
+        (or/c parsed? defuzz-error?))
+    (let ([time-level (parsed-time-level p)])
+      (hash-ref collected time-level)))
+  (define/contract (defuzz-list collected lst [defuzzed null])
+    (->* (hash? list?)
+         (list?)
+         (or/c list?
+               defuzz-error?))
+    (match lst
+      [(list)          (reverse defuzzed)]
+      [(list v vs ...) (cond
+                         [(parsed? v) (let ([defuzzed-parsed (defuzz-parsed collected v)])
+                                        (cond
+                                          [(parsed? defuzzed-parsed)       (defuzz-list
+                                                                             collected
+                                                                             vs
+                                                                             (cons defuzzed-parsed defuzzed))]
+                                          [(defuzz-error? defuzzed-parsed) defuzzed-parsed]))]
+                         [else        (defuzz-list collected vs (cons v defuzzed))])]))
+  (let ([+day+month+year-dup (+day+month+year-duplicate-exists? lst-all)])
+    (cond
+      [+day+month+year-dup   (let* ([attrs       (parsed-attrs +day+month+year-dup)]
+                                    [keyword     (hash-ref attrs 'keyword)]
+                                    [keyword-str (syntax->datum keyword)])
+                               (defuzz-error
+                                 fname
+                                 (syntax-line   keyword)
+                                 (syntax-column keyword)
+                                 (format "too many ~a in same branch" keyword-str)))]
+      [else                   (let ([collected (list->time-level-hash lst-all)])
+                                (cond
+                                  [(defuzz-error? collected) collected]
+                                  [else                      (let ([defuzzed-collected (defuzz-collection collected)])
+                                                               (cond
+                                                                 [(defuzz-error? defuzzed-collected) defuzzed-collected]
+                                                                 [else                               (defuzz-list (defuzz-collection collected) lst-all)]))]))]
+      ))
+  )
+
+(define/contract (defuzz-branch-lists lsts [defuzzed-branches null] #:file-name [fname #f])
+  (->* ((listof list?))
+       ((listof list?)
+        #:file-name (or/c string? #f))
+       (or/c (listof list?)
+             defuzz-error?))
+  (match lsts
+    [(list)          (reverse defuzzed-branches)]
+    [(list v vs ...) (let ([defuzzed-branch (defuzz-branch-list v #:file-name fname)])
+                       (cond
+                         [(defuzz-error? defuzzed-branch) defuzzed-branch]
+                         [else                            (defuzz-branch-lists vs (cons defuzzed-branch defuzzed-branches))]))]))

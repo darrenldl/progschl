@@ -1,0 +1,251 @@
+analyzer-components.rkt:         "string-utils.rkt"
+analyzer-components.rkt:(provide string->year
+analyzer-components.rkt:         string->month
+analyzer-components.rkt:         string->week
+analyzer-components.rkt:         string->day
+analyzer-components.rkt:(define/contract (string->day str)
+analyzer-components.rkt:         [lower-str       (string-downcase str)]
+analyzer-components.rkt:         [res             (string->number str)]
+analyzer-components.rkt:(define/contract (string->week str)
+analyzer-components.rkt:  (let ([res (string->number str)])
+analyzer-components.rkt:      [else                      (match (string-downcase str)
+analyzer-components.rkt:(define/contract (string->month str)
+analyzer-components.rkt:         [lower-str       (string-downcase str)]
+analyzer-components.rkt:         [res             (string->number str)]
+analyzer-components.rkt:(define/contract (string->year str)
+analyzer-components.rkt:  (let ([res (string->number str)])
+analyzer-components.rkt:      [else               (match (string-downcase str)
+analyzer.rkt:  ; or generate ctxt-dep-λs (depends on string->* functions)
+analyzer.rkt:                                                         'year  (string->year  (first (parsed-strings x))))]
+analyzer.rkt:                                                         'month (string->month (first (parsed-strings x))))]
+analyzer.rkt:                                                         'week  (string->week  (first (parsed-strings x))))]
+analyzer.rkt:                                                         'day   (string->day   (first (parsed-strings x))))]
+analyzer.rkt:                                                                      'from (string->year from)
+analyzer.rkt:                                                                      'to   (string->year to))]
+analyzer.rkt:                                                                      'from (string->month from)
+analyzer.rkt:                                                                      'to   (string->month to))]
+analyzer.rkt:                                                                      'from (string->week  from)
+analyzer.rkt:                                                                      'to   (string->week  to))]
+analyzer.rkt:                                                                      'from (string->day   from)
+analyzer.rkt:                                                                      'to   (string->day   to))]))]
+analyzer.rkt:                                 [key (string->symbol (format "~a-parsed" tl))])
+database.rkt:        (string-append (foldl (λ (x y) (string-append y x " : ~a, ")) "" front)
+database.rkt:                       (string-append (first last) " : ~a"))
+database.rkt:           [fmt        (string-append "Id : ~a, ParentId : ~a, " freq-fmt "\n"
+database.rkt:        (string-append (foldl (λ (x y) (string-append y x " : ~a, ")) "" front)
+database.rkt:                       (string-append (first last) " : ~a"))
+database.rkt:           [fmt         (string-append "Id : ~a, ParentId : ~a, Fully Explicit? : ~a, " start-fmt "\n"
+database.rkt~:        (string-append (foldl (λ (x y) (string-append y x " : ~a, ")) "" front)
+database.rkt~:                       (string-append (first last) " : ~a"))
+database.rkt~:           [fmt        (string-append "Id : ~a, ParentId : ~a, " freq-fmt "\n"
+database.rkt~:        (string-append (foldl (λ (x y) (string-append y x " : ~a, ")) "" front)
+database.rkt~:                       (string-append (first last) " : ~a"))
+database.rkt~:           [fmt         (string-append "Id : ~a, ParentId : ~a, Fully Explicit? : ~a, " start-fmt "\n"
+database-writer.rkt:(require "string-utils.rkt"
+file-parser.rkt:         "string-utils.rkt"
+file-parser.rkt:  (lockhead-parser ((string-ci/p "include"))
+file-parser.rkt:  (lockhead-parser ((string-ci/p "tab-space"))
+file-parser.rkt:                   ((syntax/p (string-ci/p "+from")))
+file-parser.rkt:                    (string-ci/p "+to")
+file-parser.rkt:                   ((syntax/p (string-ci/p "[[")))
+file-parser.rkt:                    [end-square <- (syntax/p (string-ci/p "]]"))]
+file-parser.rkt:                    (string-ci/p "->")
+file-parser.rkt:                   ((syntax/p (string-ci/p "+year")))
+file-parser.rkt:                   ((syntax/p (string-ci/p "+month")))
+file-parser.rkt:                   ((syntax/p (string-ci/p "+week")))
+file-parser.rkt:                   ((syntax/p (string-ci/p "+day")))
+file-parser.rkt:                   ((syntax/p (string-ci/p "+recur")))
+file-parser.rkt:                                              (do (string-ci/p "every")
+file-parser.rkt:                                                                  (string-downcase (remove-head-tail-space cycle-datum))
+file-parser.rkt:  (lockhead-parser ((string-ci/p "+dura"))
+file-parser.rkt:  (lockhead-parser ((string-ci/p "+tags"))
+file-parser.rkt:  (lockhead-parser ((string-ci/p "@place"))
+file-parser.rkt:  (lockhead-parser ((string-ci/p "?desc"))
+file-parser.rkt:                                           (string->lines
+file-parser.rkt:  (lockhead-parser ((string-ci/p "!dep"))
+file-parser.rkt:  (lockhead-parser ((string-ci/p "<<history"))
+file-parser.rkt~:         "string-utils.rkt"
+file-parser.rkt~:  (lockhead-parser ((string-ci/p "include"))
+file-parser.rkt~:  (lockhead-parser ((string-ci/p "tab-space"))
+file-parser.rkt~:                   ((syntax/p (string-ci/p "+from")))
+file-parser.rkt~:                    (string-ci/p "+to")
+file-parser.rkt~:                   ((syntax/p (string-ci/p "[[")))
+file-parser.rkt~:                    [end-square <- (syntax/p (string-ci/p "]]"))]
+file-parser.rkt~:                    (string-ci/p "->")
+file-parser.rkt~:                   ((syntax/p (string-ci/p "+year")))
+file-parser.rkt~:                   ((syntax/p (string-ci/p "+month")))
+file-parser.rkt~:                   ((syntax/p (string-ci/p "+week")))
+file-parser.rkt~:                   ((syntax/p (string-ci/p "+day")))
+file-parser.rkt~:                   ((syntax/p (string-ci/p "+recur")))
+file-parser.rkt~:                                              (do (string-ci/p "every")
+file-parser.rkt~:                                                                  (string-downcase (remove-head-tail-space cycle-datum))
+file-parser.rkt~:  (lockhead-parser ((string-ci/p "+dura"))
+file-parser.rkt~:  (lockhead-parser ((string-ci/p "+tags"))
+file-parser.rkt~:  (lockhead-parser ((string-ci/p "@place"))
+file-parser.rkt~:  (lockhead-parser ((string-ci/p "?desc"))
+file-parser.rkt~:                                           (string->lines
+file-parser.rkt~:  (lockhead-parser ((string-ci/p "!dep"))
+file-parser.rkt~:  (lockhead-parser ((string-ci/p "<<history"))
+fuzz-remover-components.rkt:         "string-utils.rkt"
+fuzz-remover-components.rkt:         string->year
+fuzz-remover-components.rkt:         string->month
+fuzz-remover-components.rkt:         string->day
+fuzz-remover-components.rkt:(define/contract (string->day str this-ymd)
+fuzz-remover-components.rkt:  (let ([low-str (string-downcase str)])
+fuzz-remover-components.rkt:                       [_          (let ([day-num (string->number low-str)])
+fuzz-remover-components.rkt:(define/contract (string->month str this-ymd)
+fuzz-remover-components.rkt:         [res    (regexp-match-list (string-downcase str) months)]
+fuzz-remover-components.rkt:                   (match (string-downcase str)
+fuzz-remover-components.rkt:(define/contract (string->year str this-ymd)
+fuzz-remover-components.rkt:  (let ([res (string->number str)])
+fuzz-remover-components.rkt:      [am/pm <- (or/p (try/p (do (string-ci/p "am")
+fuzz-remover-components.rkt:                      (try/p (do (string-ci/p "pm")
+fuzz-remover-components.rkt:(define/contract (string->date str)
+fuzz-remover-components.rkt:(define/contract (string->time str)
+fuzz-remover-components.rkt:         [from (string-downcase (list-ref strings 1))]
+fuzz-remover-components.rkt:         [to   (string-downcase (list-ref strings 2))])
+fuzz-remover-components.rkt:      ["year"  (let ([from-res (string->year from)]
+fuzz-remover-components.rkt:                     [to-res   (string->year to)])
+fuzz-remover-components.rkt:      ["month" (let ([from-res (string->month from)]
+fuzz-remover-components.rkt:                     [to-res   (string->month to)])
+fuzz-remover-components.rkt:      ["day"   (let ([from-res (string->day from)]
+fuzz-remover-components.rkt:                     [to-res   (string->day to)])
+fuzz-remover-components.rkt:      ["date"  (let ([from-res (string->date from)]
+fuzz-remover-components.rkt:                     [to-res   (string->date to)])
+fuzz-remover-components.rkt:      ["time"  (let ([from-res  (string->time from)]
+fuzz-remover-components.rkt:                     [to-res    (string->time to)])
+fuzz-remover-components.rkt:                   [(->func-id       ...) (format-ids "string->~a"      #'(sym ...))]
+fuzz-remover-components.rkt:                                                                          [from-sym (string->symbol (format "from-~a" (quote sym)))]
+fuzz-remover-components.rkt:                                                                          [to-sym   (string->symbol (format "to-~a" (quote sym)))])
+fuzz-remover-components.rkt:  (string->time "9:00am")
+fuzz-remover-components.rkt:  (string->time "13:00pm")
+fuzz-remover-components.rkt:  (string->time "21:00")
+fuzz-remover-components.rkt:  (string->date "2017-02-30")
+fuzz-remover-components.rkt~:         "string-utils.rkt"
+fuzz-remover-components.rkt~:         string->year
+fuzz-remover-components.rkt~:         string->month
+fuzz-remover-components.rkt~:         string->day)
+fuzz-remover-components.rkt~:(define/contract (string->day str)
+fuzz-remover-components.rkt~:(define/contract (string->month str)
+fuzz-remover-components.rkt~:         [res    (regexp-match-list (string-downcase str) months)]
+fuzz-remover-components.rkt~:      [(= num 0) (match (string-downcase str)
+fuzz-remover-components.rkt~:(define/contract (string->year str)
+fuzz-remover-components.rkt~:  (let ([res (string->number str)])
+fuzz-remover-components.rkt~:      [am/pm <- (or/p (try/p (do (string-ci/p "am")
+fuzz-remover-components.rkt~:                      (try/p (do (string-ci/p "pm")
+fuzz-remover-components.rkt~:(define/contract (string->date str)
+fuzz-remover-components.rkt~:(define/contract (string->time str)
+fuzz-remover-components.rkt~:         [from (string-downcase (list-ref strings 1))]
+fuzz-remover-components.rkt~:         [to   (string-downcase (list-ref strings 2))])
+fuzz-remover-components.rkt~:      ["year"  (let ([from-res (string->year from)]
+fuzz-remover-components.rkt~:                     [to-res   (string->year to)])
+fuzz-remover-components.rkt~:      ["month" (let ([from-res (string->month from)]
+fuzz-remover-components.rkt~:                     [to-res   (string->month to)])
+fuzz-remover-components.rkt~:      ["day"   (let ([from-res (string->day from)]
+fuzz-remover-components.rkt~:                     [to-res   (string->day to)])
+fuzz-remover-components.rkt~:      ["date"  (let ([from-res (string->date from)]
+fuzz-remover-components.rkt~:                     [to-res   (string->date to)])
+fuzz-remover-components.rkt~:      ["time"  (let ([from-res  (string->time from)]
+fuzz-remover-components.rkt~:                     [to-res    (string->time to)])
+fuzz-remover-components.rkt~:  (string->time "9:00am")
+fuzz-remover-components.rkt~:  (string->time "13:00pm")
+fuzz-remover-components.rkt~:  (string->time "21:00")
+fuzz-remover-components.rkt~:  (string->date "2017-02-30")
+fuzz-remover.rkt:         "string-utils.rkt"
+fuzz-remover.rkt.old:(require "string-utils.rkt"
+fuzz-remover.rkt.old:;                   [(->func-id       ...) (format-ids "string->~a"      #'(sym ...))]
+fuzz-remover.rkt.old:;                                                          [from-sym (string->symbol (format "from-~a" (quote sym)))]
+fuzz-remover.rkt.old:;                                                          [to-sym   (string->symbol (format "to-~a" (quote sym)))])
+fuzz-remover.rkt.old~:(require "string-utils.rkt"
+fuzz-remover.rkt.old~:                   [(->func-id       ...) (format-ids "string->~a"      #'(sym ...))]
+fuzz-remover.rkt.old~:                                                          [from-sym (string->symbol (format "from-~a" (quote sym)))]
+fuzz-remover.rkt.old~:                                                          [to-sym   (string->symbol (format "to-~a" (quote sym)))])
+macro-utils.rkt:                   (string->symbol
+macro-utils.rkt:                    (string-append str
+macro-utils.rkt:    (map string->symbol lst))
+macro-utils.rkt:    (map string-upcase lst))
+macro-utils.rkt~:                   (string->symbol
+macro-utils.rkt~:                    (string-append str
+macro-utils.rkt~:    (map string->symbol lst))
+macro-utils.rkt~:    (map string-upcase lst))
+parser-components.rkt:         string-ci/p
+parser-components.rkt:         branched-block-string-prep
+parser-components.rkt:(require "string-utils.rkt"
+parser-components.rkt:(define-syntax (string-parser stx)
+parser-components.rkt:  (string-parser any-char/p))
+parser-components.rkt:  (string-parser block-head-char/p))
+parser-components.rkt:  (string-parser add-info-char/p))
+parser-components.rkt:                                        ((syntax/p (string-ci/p keyword-str)))
+parser-components.rkt:  (string-parser smallest-scope-char/p))
+parser-components.rkt:  (string-parser desc-char/p))
+parser-components.rkt:  (string-parser not-comma-char/p))
+parser-components.rkt:  (string-parser from-char/p))
+parser-components.rkt:  (string-parser file-name-char/p))
+parser-components.rkt:  (string-parser translation-original-char/p))
+parser-components.rkt:    [(_ str ...) #'(or/p (try/p (string-ci/p str))
+parser-components.rkt:(define-syntax (branched-block-string-prep stx)
+parser-components.rkt:    [(_ (str ... chunk-parser) ...) #'(or/p (branched-block-string-prep str ...
+parser-components.rkt:             (lockhead-parser ((string-ci/p head))
+parser-components.rkt:(define (string-ci/p str)
+parser-components.rkt:  (let ([str-len (string-length str)])
+parser-components.rkt:                   [matched           (string-match  #:ci? #t str chars)]
+parser-components.rkt:                   [parsed-str-len    (string-length parsed-str)]
+parser-components.rkt:                                                     (string-ref parsed-str matched)
+parser-components.rkt:;  (define string-parse    (parse-string (do (char/p #\space)
+parser-components.rkt:;                                            (syntax/p (string/p    pattern))) (string-append " " input)))
+parser-components.rkt:;  string-parse
+parser-components.rkt:;  (define string-ci-parse (parse-string (do (char/p #\space)
+parser-components.rkt:;                                            (syntax/p (string-ci/p pattern))) (string-append " " input)))
+parser-components.rkt:;  string-ci-parse
+parser-components.rkt:;  (define string-ci-parse2 (parse-string (string-ci/p "abd") "Abe"))
+parser-components.rkt:;  string-ci-parse2
+parser-components.rkt~:         string-ci/p
+parser-components.rkt~:         branched-block-string-prep
+parser-components.rkt~:(require "string-utils.rkt"
+parser-components.rkt~:(define-syntax (string-parser stx)
+parser-components.rkt~:  (string-parser any-char/p))
+parser-components.rkt~:  (string-parser block-head-char/p))
+parser-components.rkt~:  (string-parser recur-info-list-char/p))
+parser-components.rkt~:  (string-parser smallest-scope-char/p))
+parser-components.rkt~:  (string-parser desc-char/p))
+parser-components.rkt~:  (string-parser not-comma-char/p))
+parser-components.rkt~:  (string-parser from-char/p))
+parser-components.rkt~:  (string-parser file-name-char/p))
+parser-components.rkt~:  (string-parser translation-original-char/p))
+parser-components.rkt~:    [(_ str ...) #'(or/p (try/p (string-ci/p str))
+parser-components.rkt~:(define-syntax (branched-block-string-prep stx)
+parser-components.rkt~:    [(_ (str ... chunk-parser) ...) #'(or/p (branched-block-string-prep str ...
+parser-components.rkt~:             (lockhead-parser ((string-ci/p head))
+parser-components.rkt~:(define (string-ci/p str)
+parser-components.rkt~:  (let ([str-len (string-length str)])
+parser-components.rkt~:                   [matched           (string-match  #:ci? #t str chars)]
+parser-components.rkt~:                   [parsed-str-len    (string-length parsed-str)]
+parser-components.rkt~:                                                     (string-ref parsed-str matched)
+parser-components.rkt~:;  (define string-parse    (parse-string (do (char/p #\space)
+parser-components.rkt~:;                                            (syntax/p (string/p    pattern))) (string-append " " input)))
+parser-components.rkt~:;  string-parse
+parser-components.rkt~:;  (define string-ci-parse (parse-string (do (char/p #\space)
+parser-components.rkt~:;                                            (syntax/p (string-ci/p pattern))) (string-append " " input)))
+parser-components.rkt~:;  string-ci-parse
+parser-components.rkt~:;  (define string-ci-parse2 (parse-string (string-ci/p "abd") "Abe"))
+parser-components.rkt~:;  string-ci-parse2
+parse-test.rkt:;(define-syntax (branched-block-string-prep stx)
+parse-test.rkt:;    [(_ (str ... chunk-parser) ...) #'(or/p (branched-block-string-prep str ...
+Binary file pscl matches
+string-utils.rkt:         string-match
+string-utils.rkt:         string->lines
+string-utils.rkt:(define/contract (string-match first second #:ci? [ci? #f])
+string-utils.rkt:                     (string->list first)
+string-utils.rkt:                     (string->list second)
+string-utils.rkt:(define/contract (string->lines str)
+string-utils.rkt:  (string-split str #rx"\n"))
+string-utils.rkt:                                           (let ([cur-indent (string-length (regexp-replace #rx"^([ \t]*).*" v "\\1"))])
+string-utils.rkt~:         string-match
+string-utils.rkt~:         string->lines
+string-utils.rkt~:(define/contract (string-match first second #:ci? [ci? #f])
+string-utils.rkt~:                     (string->list first)
+string-utils.rkt~:                     (string->list second)
+string-utils.rkt~:(define/contract (string->lines str)
+string-utils.rkt~:  (string-split str #rx"\n"))
+string-utils.rkt~:                                           (let ([cur-indent (string-length (regexp-replace #rx"^([ \t]*).*" v "\\1"))])
+week:fuzz-remover-components.rkt:                       [_          (let ([day-num (string->number low-str)])

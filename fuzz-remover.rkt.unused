@@ -1,0 +1,257 @@
+#lang racket
+
+(require racket/set
+         racket/syntax
+         "string-utils.rkt"
+         "fuzz-remover-components.rkt"
+         "parser-components.rkt"
+         "defuzz-error-struct-def.rkt"
+         "defuzz-utils.rkt"
+         "macro-utils.rkt"
+         "date-time-utils.rkt"
+         "parsed-utils.rkt")
+
+(provide (all-from-out "defuzz-error-struct-def.rkt"
+                       "defuzz-utils.rkt")
+         defuzz-branch-lists)
+
+(define/contract (time-level-block-dup? lst [st (set)])
+  (->* (list?)
+       (set?)
+       (or/c parsed?
+             #f))
+  (match lst
+    [(list)          #f]
+    [(list v vs ...) (cond
+                       [(parsed? v) (let ([token (parsed-token v)])
+                                      (cond
+                                        [(equal-symbol? token
+                                                        '+DAY
+                                                        '+MONTH
+                                                        '+YEAR
+                                                        '+RECUR) (if (set-member? st token)
+                                                                     v
+                                                                     (time-level-block-dup?
+                                                                      vs
+                                                                      (set-add st token)))]
+                                        [else           (time-level-block-dup? vs st)]))]
+                       [else        (time-level-block-dup? vs st)])]))
+
+(define/contract (contra-interprets? lsts [fname #f])
+  (->* ((listof list?))
+       ((or/c string? #f))
+       (or/c defuzz-error?
+             #f))
+  (define/contract (record-parsed rec p)
+    (-> hash? parsed?
+        (or/c defuzz-error? hash?))
+    (let ([id (parsed-id p)])
+      (if (hash-has-key? rec id)
+          (let ([p2 (hash-ref rec id)])
+            (if (equal? p p2)
+                rec
+                (let ([keyword     (hash-ref (parsed-attrs p) 'keyword)]
+                      [keyword-str (hash-ref (parsed-attrs p) 'keyword-str)])
+                  (defuzz-error
+                    fname
+                    (syntax-line   keyword)
+                    (syntax-column keyword)
+                    (format "contradicting interpretation for ~a detected" keyword-str)))))
+          (hash-set rec id p))
+      ))
+  (define/contract (record-parsed-branch lst [rec (hash)])
+    (->* (list?)
+         (hash?)
+         (or/c hash? defuzz-error?))
+    (match lst
+      [(list)          rec]
+      [(list v vs ...) (cond
+                         [(parsed? v) (let ([res (record-parsed rec v)])
+                                        (cond
+                                          [(defuzz-error? res) res]
+                                          [(hash?         res) (record-parsed-branch vs res)]))]
+                         [else        rec])]))
+  (define/contract (contra-interprets?-helper lsts [rec (hash)])
+    (->* ((listof list?))
+         (hash?)
+         (or/c hash? defuzz-error? #f))
+    (match lsts
+      [(list)          #f]
+      [(list v vs ...) (let*-values ([(head tail) (split-at v 1)]
+                                     [(cur-rec)   (record-parsed-branch tail rec)])
+                         (cond
+                           [(defuzz-error? cur-rec) cur-rec]
+                           [(hash?         cur-rec) (contra-interprets?-helper vs
+                                                                               cur-rec)]))]))
+  (contra-interprets?-helper lsts))
+
+(define/contract (parsed-time-level p)
+  (-> parsed? symbol?)
+  (let ([token (parsed-token p)])
+    (match token
+      ['+YEAR    'year]
+      ['+MONTH   'month]
+      ['+DAY     'day]
+      ['+DATE    'date]
+      ;['+TIME    'time]
+      ['+DURA    'time]
+      ['+FROM+TO (let ([unit (list-ref (parsed-strings p) 0)])
+                   (match unit
+                     ["year"  'year]
+                     ["month" 'month]
+                     ["day"   'day]
+                     ["date"  'date]
+                     ["time"  'time]))]
+      ['+RECUR   (let ([cycle (hash-ref (parsed-attrs p) 'cycle)])
+                   (match cycle
+                     ["yearly"          'year]
+                     ["monthly"         'month]
+                     ["weekly"          'week]
+                     ["daily"           'day]
+                     ["hourly"          'time]
+                     [(list _ "year")   'year]
+                     [(list _ "years")  'year]
+                     [(list _ "month")  'month]
+                     [(list _ "months") 'month]
+                     [(list _ "week")   'week]
+                     [(list _ "weeks")  'week]
+                     [(list _ "day")    'day]
+                     [(list _ "days")   'day]))]
+      [_         'no-time-level])))
+
+(define/contract (list->time-level-hash lst [fname #f])
+  (->* (list?)
+       ((or/c string? #f))
+       (or/c hash?
+             defuzz-error?))
+  (define (list->time-level-hash-helper lst [tlh (hash)])
+    (match lst
+      [(list)          tlh]
+      [(list v vs ...) (cond
+                         [(and (parsed? v)
+                               (not (symbol=?
+                                     'no-time-level
+                                     (parsed-time-level v)))) (if (hash-has-key? tlh (parsed-time-level v))
+                                                                  (let* ([keyword     (hash-ref (parsed-attrs v) 'keyword)]
+                                                                         [keyword-str (syntax->datum keyword)])
+                                                                    (defuzz-error
+                                                                      fname
+                                                                      (syntax-line   keyword)
+                                                                      (syntax-column keyword)
+                                                                      (format "code block of same time level already exists : ~a"
+                                                                              keyword-str)))
+                                                                  (list->time-level-hash-helper vs (hash-set tlh
+                                                                                                             (parsed-time-level v) v)))]
+                         [else                                (list->time-level-hash-helper vs tlh)])]))
+  (list->time-level-hash-helper lst))
+
+(define/contract (defuzz-time-level-hash tlh this-ymd [fname #f])
+  (->* ((or/c hash? defuzz-error?)
+        hash?)
+       ((or/c string? #f))
+       (or/c hash? defuzz-error?))
+  
+  (define-for-defuzz-time-level year month day)
+  
+  (let-values ([(tlh ymd fname) ((compose defuzz-day-level
+                                          defuzz-month-level
+                                          defuzz-year-level) tlh this-ymd fname)])
+    tlh)
+  )
+
+(define/contract (defuzz-parsed tlh p)
+    (-> hash? parsed?
+        (or/c parsed? defuzz-error?))
+    (let ([time-level (parsed-time-level p)])
+      (if (symbol=? time-level 'no-time-level)
+          p
+          (hash-ref tlh time-level))))
+
+(define/contract (defuzz-list tlh lst [defuzzed null])
+  (->* (hash? list?)
+       (list?)
+       (or/c list?
+             defuzz-error?))
+  (match lst
+    [(list)          (reverse defuzzed)]
+    [(list v vs ...) (cond
+                       [(parsed? v) (let ([defuzzed-parsed (defuzz-parsed tlh v)])
+                                      (cond
+                                        [(parsed? defuzzed-parsed)       (defuzz-list
+                                                                           tlh
+                                                                           vs
+                                                                           (cons defuzzed-parsed defuzzed))]
+                                        [(defuzz-error? defuzzed-parsed) defuzzed-parsed]))]
+                       [else        (defuzz-list tlh vs (cons v defuzzed))])]))
+
+(define/contract (get-this-ymd lsts [ymd (hash)])
+  (->* ((listof list?))
+       (hash?)
+       hash?)
+  (define/contract (get-this-ymd-helper lst [ymd (hash)])
+    (->* (list?)
+         (hash?)
+         hash?)
+    (match lst
+      [(list)          ymd]
+      [(list v vs ...) (cond
+                         [(parsed-with-token v 'THIS-YEAR)  (get-this-ymd-helper vs (if (hash-has-key? ymd 'year)
+                                                                                        ymd
+                                                                                        (hash-set ymd 'year  (hash-ref (parsed-attrs v) 'this-year))))]
+                         [(parsed-with-token v 'THIS-MONTH) (get-this-ymd-helper vs (if (hash-has-key? ymd 'month)
+                                                                                        ymd
+                                                                                        (hash-set ymd 'month (hash-ref (parsed-attrs v) 'this-month))))]
+                         [(parsed-with-token v 'TODAY)      (get-this-ymd-helper vs (if (hash-has-key? ymd 'day)
+                                                                                        ymd
+                                                                                        (hash-set ymd 'day   (hash-ref (parsed-attrs v) 'today))))]
+                         [else                              (get-this-ymd-helper vs ymd)])]))
+  (match lsts
+    [(list)          ymd]
+    [(list v vs ...) (get-this-ymd vs (get-this-ymd-helper v ymd))]))
+
+(define/contract (defuzz-branch-list lst this-ymd [fname #f])
+  (->* (list?
+        hash?)
+       ((or/c string? #f))
+       (or/c list? defuzz-error?))
+  (let ([+day+month+year-dup (time-level-block-dup? lst)])
+    (cond
+      [+day+month+year-dup   (let* ([attrs       (parsed-attrs +day+month+year-dup)]
+                                    [keyword     (hash-ref attrs 'keyword)]
+                                    [keyword-str (syntax->datum keyword)])
+                               (defuzz-error
+                                 fname
+                                 (syntax-line   keyword)
+                                 (syntax-column keyword)
+                                 (format "too many ~a in same branch" keyword-str)))]
+      [else                  (let ([tlh (defuzz-time-level-hash (list->time-level-hash lst) this-ymd fname)])
+                               (cond
+                                 [(defuzz-error? tlh) tlh]
+                                 [(hash?         tlh) (cons tlh (defuzz-list tlh lst))]))])))
+
+(define/contract (defuzz-branch-lists lsts #:file-name [fname #f])
+  (->* ((listof list?))
+       (#:file-name (or/c string? #f))
+       (or/c (listof list?)
+             defuzz-error?))
+  (define/contract (defuzz-branch-lists-helper lsts this-ymd [defuzzed-branches null])
+    (->* ((listof list?)
+          hash?)
+         ((listof list?))
+         (or/c (listof list?)
+               defuzz-error?))
+    (match lsts
+      [(list)          (reverse defuzzed-branches)]
+      [(list v vs ...) (let ([defuzzed-branch (defuzz-branch-list v this-ymd fname)])
+                         (cond
+                           [(defuzz-error? defuzzed-branch) defuzzed-branch]
+                           [else                            (defuzz-branch-lists-helper vs this-ymd (cons defuzzed-branch defuzzed-branches))]))]))
+  (let* ([this-ymd          (get-this-ymd lsts)]
+         [defuzzed-branches (defuzz-branch-lists-helper lsts this-ymd)])
+    (cond
+      [(defuzz-error? defuzzed-branches) defuzzed-branches]
+      [else
+       (let ([contra-detected   (contra-interprets? defuzzed-branches)])
+         (cond
+           [contra-detected contra-detected]
+           [else            defuzzed-branches]))])))
