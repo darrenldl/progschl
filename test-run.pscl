@@ -2,7 +2,7 @@
     ~ task 1
 }
 
-+recur monthly [start@ +m July +t 13:39] {
++recur monthly [start@ +m July +t 13:39, end@ +y 2010] {
     +recur daily [start@ +y 2018, end@ +y 2018] {
         ~ task 2 {
             ~ sub task A

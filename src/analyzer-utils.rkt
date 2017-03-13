@@ -78,11 +78,11 @@
                    (format "file : ~a, line : ~a, column : ~a -> ~a"
                            fname
                            (analysis-error-line   error)
-                           (+ (analysis-error-column error) 1)
+                           (analysis-error-column error)
                            (analysis-error-msg    error))
                    (format "line : ~a, column : ~a -> ~a"
                            (analysis-error-line   error)
-                           (+ (analysis-error-column error) 1)
+                           (analysis-error-column error)
                            (analysis-error-msg    error))))))
 
 (define/contract (show-analysis-errors errors)
@@ -216,11 +216,11 @@
                 [keyword-str (syntax->datum keyword-syn)])
            (analysis-error (file-name)
                            (syntax-line   keyword-syn)
-                           (syntax-column keyword-syn)
+                           (add1 (syntax-column keyword-syn))
                            (format "additional info : ~a has already appeared at ~a:~a ~a"
                                    keyword-str
                                    (syntax-line   first)
-                                   (syntax-column first)
+                                   (add1 (syntax-column first))
                                    loc-desc))))
        lst))
 
@@ -232,12 +232,12 @@
                 [keyword-str (syntax->datum keyword-syn)])
            (analysis-error (file-name)
                            (syntax-line   keyword-syn)
-                           (syntax-column keyword-syn)
+                           (add1 (syntax-column keyword-syn))
                            (format "additional info : ~a overlaps with time level of info ~a at ~a:~a"
                                    keyword-str
                                    (syntax->datum first)
                                    (syntax-line   first)
-                                   (syntax-column first)))))
+                                   (add1 (syntax-column first))))))
        lst))
 
 (define/contract (infos->analysis-error-repeated-in-branch first lst)
@@ -267,11 +267,11 @@
                                                                        [keyword-str (syntax->datum keyword-syn)])
                                                                   (cons (analysis-error (file-name)
                                                                                         (syntax-line   keyword-syn)
-                                                                                        (syntax-column keyword-syn)
+                                                                                        (add1 (syntax-column keyword-syn))
                                                                                         (format "~a is already specified at ~a:~a"
                                                                                                 keyword-str
                                                                                                 (syntax-line   first-one-syn)
-                                                                                                (syntax-column first-one-syn)))
+                                                                                                (add1 (syntax-column first-one-syn))))
                                                                         res)))]))
   (let* ([first-one     (first lst)]
          [first-one-syn (hash-ref (parsed-attrs first-one) 'keyword)]
@@ -472,7 +472,7 @@
                          [(= info-str-len 0) (check-for-empty-infos vs
                                                                     (cons (analysis-error (file-name)
                                                                                           (syntax-line   keyword-syn)
-                                                                                          (syntax-column keyword-syn)
+                                                                                          (add1 (syntax-column keyword-syn))
                                                                                           (format "~a is missing information"
                                                                                                   keyword-str))
                                                                           res))]

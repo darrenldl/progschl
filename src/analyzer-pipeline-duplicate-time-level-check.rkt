@@ -28,7 +28,11 @@
                                                                       res)))])]))
     (duplicate-check-helper (hash-ref (analysis-ctxt->hash ctxt) level null)))
   (define errors (let ([ctxt     (vector-ref vect 0)]
-                       [sym-list (list 'year-parsed 'month-parsed 'week-parsed' day-parsed)])
+                       [sym-list (list 'year-parsed
+                                       'month-parsed
+                                       'week-parsed
+                                       'day-parsed
+                                       'minute-parsed)])
                    (foldr append null (map (λ (x) (duplicate-check ctxt x)) sym-list))))
   (cond
     [(= (length errors) 0) vect]

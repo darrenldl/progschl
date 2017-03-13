@@ -488,7 +488,7 @@
        (_ _ srclocs unexpected expected)) (let ([srcloc (first srclocs)])
                                             (parse-error (file-name)
                                                          (srcloc-line   srcloc)
-                                                         (srcloc-column srcloc)
+                                                         (add1 (srcloc-column srcloc))
                                                          (format "unexpected/unrecognized : ~a"
                                                                  unexpected)))]))
 
